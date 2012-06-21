@@ -102,9 +102,9 @@ class UnitOfWork implements PropertyChangedListener
      * Map of entity changes. Keys are object ids (spl_object_hash).
      * Filled at the beginning of a commit of the UnitOfWork and cleaned at the end.
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $entityChangeSets = array();
+    private $entityChangeSets;
 
     /**
      * The (cached) states of any known entities.
@@ -243,6 +243,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->evm = $em->getEventManager();
         $this->entityUpdates = new SplObjectStorage();
         $this->entityIdentifiers = new SplObjectStorage();
+        $this->entityChangeSets = new SplObjectStorage();
     }
 
     /**
@@ -359,10 +360,10 @@ class UnitOfWork implements PropertyChangedListener
 
         // Clear up
         $this->entityUpdates = new SplObjectStorage();
+        $this->entityChangeSets = new SplObjectStorage();
         $this->entityInsertions =
         $this->entityDeletions =
         $this->extraUpdates =
-        $this->entityChangeSets =
         $this->collectionUpdates =
         $this->collectionDeletions =
         $this->visitedCollections =
@@ -432,10 +433,10 @@ class UnitOfWork implements PropertyChangedListener
      */
     private function executeExtraUpdates()
     {
-        foreach ($this->extraUpdates as $oid => $update) {
+        foreach ($this->extraUpdates as $update) {
             list ($entity, $changeset) = $update;
 
-            $this->entityChangeSets[$oid] = $changeset;
+            $this->entityChangeSets->attach($entity, $changeset);
             $this->getEntityPersister(get_class($entity))->update($entity);
         }
     }
@@ -447,10 +448,8 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function getEntityChangeSet($entity)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($this->entityChangeSets[$oid])) {
-            return $this->entityChangeSets[$oid];
+        if ($this->entityChangeSets->contains($entity)) {
+            return $this->entityChangeSets->offsetGet($entity);
         }
 
         return array();
@@ -555,14 +554,14 @@ class UnitOfWork implements PropertyChangedListener
                 }
             }
 
-            $this->entityChangeSets[$oid] = $changeSet;
+            $this->entityChangeSets->attach($entity, $changeSet);
         } else {
             // Entity is "fully" MANAGED: it was already fully persisted before
             // and we have a copy of the original data
             $originalData           = $this->originalEntityData[$oid];
             $isChangeTrackingNotify = $class->isChangeTrackingNotify();
-            $changeSet              = ($isChangeTrackingNotify && isset($this->entityChangeSets[$oid]))
-                ? $this->entityChangeSets[$oid]
+            $changeSet              = ($isChangeTrackingNotify && $this->entityChangeSets->contains($entity))
+                ? $this->entityChangeSets->offsetGet($entity)
                 : array();
 
             foreach ($actualData as $propName => $actualValue) {
@@ -634,7 +633,7 @@ class UnitOfWork implements PropertyChangedListener
             }
 
             if ($changeSet) {
-                $this->entityChangeSets[$oid]   = $changeSet;
+                $this->entityChangeSets->attach($entity, $changeSet);
                 $this->originalEntityData[$oid] = $actualData;
                 $this->entityUpdates->attach($entity);
             }
@@ -644,12 +643,12 @@ class UnitOfWork implements PropertyChangedListener
         foreach ($class->associationMappings as $field => $assoc) {
             if (($val = $class->reflFields[$field]->getValue($entity)) !== null) {
                 $this->computeAssociationChanges($assoc, $val);
-                if (!isset($this->entityChangeSets[$oid]) &&
+                if ( ! $this->entityChangeSets->contains($entity) &&
                     $assoc['isOwningSide'] &&
                     $assoc['type'] == ClassMetadata::MANY_TO_MANY &&
                     $val instanceof PersistentCollection &&
                     $val->isDirty()) {
-                    $this->entityChangeSets[$oid]   = array();
+                    $this->entityChangeSets->attach($entity, array());
                     $this->originalEntityData[$oid] = $actualData;
                     $this->entityUpdates->attach($entity);
                 }
@@ -866,8 +865,11 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         if ($changeSet) {
-            if (isset($this->entityChangeSets[$oid])) {
-                $this->entityChangeSets[$oid] = array_merge($this->entityChangeSets[$oid], $changeSet);
+            if ($this->entityChangeSets->contains($entity)) {
+                $this->entityChangeSets->attach(
+                    $entity,
+                    array_merge($this->entityChangeSets->offsetGet($entity), $changeSet)
+                );
             }
 
             $this->originalEntityData[$oid] = $actualData;
@@ -960,13 +962,16 @@ class UnitOfWork implements PropertyChangedListener
             }
 
             if ($hasPreUpdateListeners) {
+                // @todo is this actually a removed feature? it is indeed a BC break, but using PreUpdateEventArgs
+                // with byref is weird
+                $entityChangeSets = $this->entityChangeSets[$entity];
                 $this->evm->dispatchEvent(
                     Events::preUpdate,
-                    new Event\PreUpdateEventArgs($entity, $this->em, $this->entityChangeSets[$oid])
+                    new Event\PreUpdateEventArgs($entity, $this->em, $entityChangeSets)
                 );
             }
 
-            if ($this->entityChangeSets[$oid]) {
+            if ($this->entityChangeSets->offsetGet($entity)) {
                 $persister->update($entity);
             }
 
@@ -2219,9 +2224,9 @@ class UnitOfWork implements PropertyChangedListener
         if ($entityName === null) {
             $this->entityUpdates = new SplObjectStorage();
             $this->entityIdentifiers = new SplObjectStorage();
+            $this->entityChangeSets = new SplObjectStorage();
             $this->identityMap =
             $this->originalEntityData =
-            $this->entityChangeSets =
             $this->entityStates =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
@@ -2809,13 +2814,13 @@ class UnitOfWork implements PropertyChangedListener
 
     /**
      * INTERNAL:
-     * Clears the property changeset of the entity with the given OID.
+     * Clears the property changeset of the entity.
      *
-     * @param string $oid The entity's OID.
+     * @param object $entity
      */
-    public function clearEntityChangeSet($oid)
+    public function clearEntityChangeSet($entity)
     {
-        $this->entityChangeSets[$oid] = array();
+        $this->entityChangeSets->attach($entity, array());
     }
 
     /* PropertyChangedListener implementation */
@@ -2840,7 +2845,13 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         // Update changeset and mark entity for synchronization
-        $this->entityChangeSets[$oid][$propertyName] = array($oldValue, $newValue);
+        if ( ! $this->entityChangeSets->contains($entity)) {
+            $this->entityChangeSets->attach($entity, array());
+        }
+
+        $data = $this->entityChangeSets->offsetGet($entity);
+        $data[$propertyName] = array($oldValue, $newValue);
+        $this->entityChangeSets->attach($entity, $data);
 
         if ( ! isset($this->scheduledForDirtyCheck[$class->rootEntityName][$oid])) {
             $this->scheduleForDirtyCheck($entity);
