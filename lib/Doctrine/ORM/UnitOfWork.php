@@ -155,9 +155,9 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * All pending collection deletions.
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $collectionDeletions = array();
+    private $collectionDeletions;
 
     /**
      * All pending collection updates.
@@ -245,6 +245,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->entityIdentifiers = new SplObjectStorage();
         $this->entityChangeSets = new SplObjectStorage();
         $this->entityStates = new SplObjectStorage();
+        $this->collectionDeletions = new SplObjectStorage();
     }
 
     /**
@@ -285,7 +286,7 @@ class UnitOfWork implements PropertyChangedListener
                 $this->entityDeletions ||
                 $this->entityUpdates->count() ||
                 $this->collectionUpdates ||
-                $this->collectionDeletions ||
+                $this->collectionDeletions->count() ||
                 $this->orphanRemovals)) {
             return; // Nothing to do.
         }
@@ -362,11 +363,11 @@ class UnitOfWork implements PropertyChangedListener
         // Clear up
         $this->entityUpdates = new SplObjectStorage();
         $this->entityChangeSets = new SplObjectStorage();
+        $this->collectionDeletions = new SplObjectStorage();
         $this->entityInsertions =
         $this->entityDeletions =
         $this->extraUpdates =
         $this->collectionUpdates =
-        $this->collectionDeletions =
         $this->visitedCollections =
         $this->scheduledForDirtyCheck =
         $this->orphanRemovals = array();
@@ -612,11 +613,11 @@ class UnitOfWork implements PropertyChangedListener
                     // A PersistentCollection was de-referenced, so delete it.
                     $coid = spl_object_hash($orgValue);
 
-                    if (isset($this->collectionDeletions[$coid])) {
+                    if ($this->collectionDeletions->contains($orgValue)) {
                         continue;
                     }
 
-                    $this->collectionDeletions[$coid] = $orgValue;
+                    $this->collectionDeletions->attach($orgValue);
                     $changeSet[$propName] = $orgValue; // Signal changeset, to-many assocs will be ignored.
 
                     continue;
@@ -2230,12 +2231,12 @@ class UnitOfWork implements PropertyChangedListener
             $this->entityIdentifiers = new SplObjectStorage();
             $this->entityChangeSets = new SplObjectStorage();
             $this->entityStates = new SplObjectStorage();
+            $this->collectionDeletions = new SplObjectStorage();
             $this->identityMap =
             $this->originalEntityData =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
             $this->entityDeletions =
-            $this->collectionDeletions =
             $this->collectionUpdates =
             $this->extraUpdates =
             $this->readOnlyObjects =
@@ -2290,7 +2291,7 @@ class UnitOfWork implements PropertyChangedListener
             unset($this->collectionUpdates[$coid]);
         }
 
-        $this->collectionDeletions[$coid] = $coll;
+        $this->collectionDeletions->attach($coll);
     }
 
     public function isCollectionScheduledForDeletion(PersistentCollection $coll)
@@ -2895,7 +2896,7 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Get the currently scheduled complete collection deletions
      *
-     * @return array
+     * @return SplObjectStorage
      */
     public function getScheduledCollectionDeletions()
     {
