@@ -214,9 +214,9 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Orphaned entities that are scheduled for removal.
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $orphanRemovals = array();
+    private $orphanRemovals;
 
     /**
      * Read-Only objects are never evaluated
@@ -248,6 +248,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->collectionDeletions = new SplObjectStorage();
         $this->collectionUpdates = new SplObjectStorage();
         $this->visitedCollections = new SplObjectStorage();
+        $this->orphanRemovals = new SplObjectStorage();
     }
 
     /**
@@ -289,11 +290,11 @@ class UnitOfWork implements PropertyChangedListener
                 $this->entityUpdates->count() ||
                 $this->collectionUpdates->count() ||
                 $this->collectionDeletions->count() ||
-                $this->orphanRemovals)) {
+                $this->orphanRemovals->count())) {
             return; // Nothing to do.
         }
 
-        if ($this->orphanRemovals) {
+        if ($this->orphanRemovals->count()) {
             foreach ($this->orphanRemovals as $orphan) {
                 $this->remove($orphan);
             }
@@ -368,11 +369,11 @@ class UnitOfWork implements PropertyChangedListener
         $this->collectionDeletions = new SplObjectStorage();
         $this->collectionUpdates = new SplObjectStorage();
         $this->visitedCollections = new SplObjectStorage();
+        $this->orphanRemovals = new SplObjectStorage();
         $this->entityInsertions =
         $this->entityDeletions =
         $this->extraUpdates =
-        $this->scheduledForDirtyCheck =
-        $this->orphanRemovals = array();
+        $this->scheduledForDirtyCheck = array();
     }
 
     /**
@@ -2235,14 +2236,14 @@ class UnitOfWork implements PropertyChangedListener
             $this->entityStates = new SplObjectStorage();
             $this->collectionDeletions = new SplObjectStorage();
             $this->collectionUpdates = new SplObjectStorage();
+            $this->orphanRemovals = new SplObjectStorage();
             $this->identityMap =
             $this->originalEntityData =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
             $this->entityDeletions =
             $this->extraUpdates =
-            $this->readOnlyObjects =
-            $this->orphanRemovals = array();
+            $this->readOnlyObjects = array();
 
             if ($this->commitOrderCalculator !== null) {
                 $this->commitOrderCalculator->clear();
@@ -2274,7 +2275,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function scheduleOrphanRemoval($entity)
     {
-        $this->orphanRemovals[spl_object_hash($entity)] = $entity;
+        $this->orphanRemovals->attach($entity);
     }
 
     /**
