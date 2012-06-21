@@ -221,9 +221,9 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Read-Only objects are never evaluated
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $readOnlyObjects = array();
+    private $readOnlyObjects;
 
     /**
      * Map of Entity Class-Names and corresponding IDs that should eager loaded when requested.
@@ -249,6 +249,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->collectionUpdates = new SplObjectStorage();
         $this->visitedCollections = new SplObjectStorage();
         $this->orphanRemovals = new SplObjectStorage();
+        $this->readOnlyObjects = new SplObjectStorage();
     }
 
     /**
@@ -494,7 +495,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid = spl_object_hash($entity);
 
-        if (isset($this->readOnlyObjects[$oid])) {
+        if ($this->readOnlyObjects->contains($entity)) {
             return;
         }
 
@@ -1416,7 +1417,6 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function removeFromIdentityMap($entity)
     {
-        $oid           = spl_object_hash($entity);
         $classMetadata = $this->em->getClassMetadata(get_class($entity));
         $idHash        = implode(' ', $this->entityIdentifiers->offsetGet($entity));
 
@@ -1428,7 +1428,7 @@ class UnitOfWork implements PropertyChangedListener
 
         if (isset($this->identityMap[$className][$idHash])) {
             unset($this->identityMap[$className][$idHash]);
-            unset($this->readOnlyObjects[$oid]);
+            $this->readOnlyObjects->detach($entity);
 
             //$this->entityStates->attach($entity, self::STATE_DETACHED);
 
@@ -2237,13 +2237,13 @@ class UnitOfWork implements PropertyChangedListener
             $this->collectionDeletions = new SplObjectStorage();
             $this->collectionUpdates = new SplObjectStorage();
             $this->orphanRemovals = new SplObjectStorage();
+            $this->readOnlyObjects = new SplObjectStorage();
             $this->identityMap =
             $this->originalEntityData =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
             $this->entityDeletions =
-            $this->extraUpdates =
-            $this->readOnlyObjects = array();
+            $this->extraUpdates = array();
 
             if ($this->commitOrderCalculator !== null) {
                 $this->commitOrderCalculator->clear();
@@ -2960,7 +2960,7 @@ class UnitOfWork implements PropertyChangedListener
             throw ORMInvalidArgumentException::readOnlyRequiresManagedEntity($object);
         }
 
-        $this->readOnlyObjects[spl_object_hash($object)] = true;
+        $this->readOnlyObjects->attach($object, true);
     }
 
     /**
@@ -2968,7 +2968,7 @@ class UnitOfWork implements PropertyChangedListener
      *
      * @throws \InvalidArgumentException
      * @param $object
-     * @return void
+     * @return bool
      */
     public function isReadOnly($object)
     {
@@ -2976,6 +2976,6 @@ class UnitOfWork implements PropertyChangedListener
             throw ORMInvalidArgumentException::readOnlyRequiresManagedEntity($object);
         }
 
-        return isset($this->readOnlyObjects[spl_object_hash($object)]);
+        return $this->readOnlyObjects->contains($object);
     }
 }
