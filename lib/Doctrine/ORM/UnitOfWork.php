@@ -162,9 +162,9 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * All pending collection updates.
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $collectionUpdates = array();
+    private $collectionUpdates;
 
     /**
      * List of collections visited during changeset calculation on a commit-phase of a UnitOfWork.
@@ -246,6 +246,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->entityChangeSets = new SplObjectStorage();
         $this->entityStates = new SplObjectStorage();
         $this->collectionDeletions = new SplObjectStorage();
+        $this->collectionUpdates = new SplObjectStorage();
     }
 
     /**
@@ -285,7 +286,7 @@ class UnitOfWork implements PropertyChangedListener
         if ( ! ($this->entityInsertions ||
                 $this->entityDeletions ||
                 $this->entityUpdates->count() ||
-                $this->collectionUpdates ||
+                $this->collectionUpdates->count() ||
                 $this->collectionDeletions->count() ||
                 $this->orphanRemovals)) {
             return; // Nothing to do.
@@ -364,10 +365,10 @@ class UnitOfWork implements PropertyChangedListener
         $this->entityUpdates = new SplObjectStorage();
         $this->entityChangeSets = new SplObjectStorage();
         $this->collectionDeletions = new SplObjectStorage();
+        $this->collectionUpdates = new SplObjectStorage();
         $this->entityInsertions =
         $this->entityDeletions =
         $this->extraUpdates =
-        $this->collectionUpdates =
         $this->visitedCollections =
         $this->scheduledForDirtyCheck =
         $this->orphanRemovals = array();
@@ -725,7 +726,7 @@ class UnitOfWork implements PropertyChangedListener
             $coid = spl_object_hash($value);
 
             if ($assoc['isOwningSide']) {
-                $this->collectionUpdates[$coid] = $value;
+                $this->collectionUpdates->attach($value);
             }
 
             $this->visitedCollections[$coid] = $value;
@@ -2232,12 +2233,12 @@ class UnitOfWork implements PropertyChangedListener
             $this->entityChangeSets = new SplObjectStorage();
             $this->entityStates = new SplObjectStorage();
             $this->collectionDeletions = new SplObjectStorage();
+            $this->collectionUpdates = new SplObjectStorage();
             $this->identityMap =
             $this->originalEntityData =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
             $this->entityDeletions =
-            $this->collectionUpdates =
             $this->extraUpdates =
             $this->readOnlyObjects =
             $this->orphanRemovals = array();
@@ -2283,12 +2284,10 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function scheduleCollectionDeletion(PersistentCollection $coll)
     {
-        $coid = spl_object_hash($coll);
-
         //TODO: if $coll is already scheduled for recreation ... what to do?
         // Just remove $coll from the scheduled recreations?
-        if (isset($this->collectionUpdates[$coid])) {
-            unset($this->collectionUpdates[$coid]);
+        if ($this->collectionUpdates->contains($coll)) {
+            $this->collectionUpdates->detach($coll);
         }
 
         $this->collectionDeletions->attach($coll);
@@ -2296,7 +2295,7 @@ class UnitOfWork implements PropertyChangedListener
 
     public function isCollectionScheduledForDeletion(PersistentCollection $coll)
     {
-        return isset($this->collectionsDeletions[spl_object_hash($coll)]);
+        return isset($this->collectionDeletions[spl_object_hash($coll)]);
     }
 
     /**
@@ -2906,7 +2905,7 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Gets the currently scheduled collection inserts, updates and deletes.
      *
-     * @return array
+     * @return SplObjectStorage
      */
     public function getScheduledCollectionUpdates()
     {
