@@ -27,7 +27,8 @@ use Exception, InvalidArgumentException, UnexpectedValueException,
     Doctrine\Common\Persistence\ObjectManagerAware,
     Doctrine\ORM\Event\LifecycleEventArgs,
     Doctrine\ORM\Mapping\ClassMetadata,
-    Doctrine\ORM\Proxy\Proxy;
+    Doctrine\ORM\Proxy\Proxy,
+    SplObjectStorage;
 
 /**
  * The UnitOfWork is responsible for tracking changes to objects during an
@@ -135,7 +136,7 @@ class UnitOfWork implements PropertyChangedListener
      *
      * @var array
      */
-    private $entityUpdates = array();
+    private $entityUpdates;
 
     /**
      * Any pending extra updates that have been scheduled by persisters.
@@ -240,6 +241,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $this->em = $em;
         $this->evm = $em->getEventManager();
+        $this->entityUpdates = new SplObjectStorage();
     }
 
     /**
@@ -278,7 +280,7 @@ class UnitOfWork implements PropertyChangedListener
 
         if ( ! ($this->entityInsertions ||
                 $this->entityDeletions ||
-                $this->entityUpdates ||
+                $this->entityUpdates->count() ||
                 $this->collectionUpdates ||
                 $this->collectionDeletions ||
                 $this->orphanRemovals)) {
@@ -309,7 +311,7 @@ class UnitOfWork implements PropertyChangedListener
                 }
             }
 
-            if ($this->entityUpdates) {
+            if ($this->entityUpdates->count()) {
                 foreach ($commitOrder as $class) {
                     $this->executeUpdates($class);
                 }
@@ -355,8 +357,8 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         // Clear up
+        $this->entityUpdates = new SplObjectStorage();
         $this->entityInsertions =
-        $this->entityUpdates =
         $this->entityDeletions =
         $this->extraUpdates =
         $this->entityChangeSets =
@@ -633,7 +635,7 @@ class UnitOfWork implements PropertyChangedListener
             if ($changeSet) {
                 $this->entityChangeSets[$oid]   = $changeSet;
                 $this->originalEntityData[$oid] = $actualData;
-                $this->entityUpdates[$oid]      = $entity;
+                $this->entityUpdates->attach($entity);
             }
         }
 
@@ -648,7 +650,7 @@ class UnitOfWork implements PropertyChangedListener
                     $val->isDirty()) {
                     $this->entityChangeSets[$oid]   = array();
                     $this->originalEntityData[$oid] = $actualData;
-                    $this->entityUpdates[$oid]      = $entity;
+                    $this->entityUpdates->attach($entity);
                 }
             }
         }
@@ -944,7 +946,8 @@ class UnitOfWork implements PropertyChangedListener
         $hasPostUpdateLifecycleCallbacks = isset($class->lifecycleCallbacks[Events::postUpdate]);
         $hasPostUpdateListeners          = $this->evm->hasListeners(Events::postUpdate);
 
-        foreach ($this->entityUpdates as $oid => $entity) {
+        foreach ($this->entityUpdates as $entity) {
+            $oid = spl_object_hash($entity);
             if ($this->em->getClassMetadata(get_class($entity))->name !== $className) {
                 continue;
             }
@@ -966,7 +969,8 @@ class UnitOfWork implements PropertyChangedListener
                 $persister->update($entity);
             }
 
-            unset($this->entityUpdates[$oid]);
+            //unset($this->entityUpdates[$oid]);
+            $this->entityUpdates->detach($entity);
 
             if ($hasPostUpdateLifecycleCallbacks) {
                 $class->invokeLifecycleCallbacks(Events::postUpdate, $entity);
@@ -1030,7 +1034,11 @@ class UnitOfWork implements PropertyChangedListener
     private function getCommitOrder(array $entityChangeSet = null)
     {
         if ($entityChangeSet === null) {
-            $entityChangeSet = array_merge($this->entityInsertions, $this->entityUpdates, $this->entityDeletions);
+            $updates = array();
+            foreach ($this->entityUpdates as $entity) {
+                $updates[spl_object_hash($entity)] = $entity;
+            }
+            $entityChangeSet = array_merge($this->entityInsertions, $updates, $this->entityDeletions);
         }
 
         $calc = $this->getCommitOrderCalculator();
@@ -1104,7 +1112,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid = spl_object_hash($entity);
 
-        if (isset($this->entityUpdates[$oid])) {
+        if ($this->entityUpdates->contains($entity)) {
             throw new InvalidArgumentException("Dirty entity can not be scheduled for insertion.");
         }
 
@@ -1154,8 +1162,8 @@ class UnitOfWork implements PropertyChangedListener
             throw ORMInvalidArgumentException::entityIsRemoved($entity, "schedule for update");
         }
 
-        if ( ! isset($this->entityUpdates[$oid]) && ! isset($this->entityInsertions[$oid])) {
-            $this->entityUpdates[$oid] = $entity;
+        if ( ! $this->entityUpdates->contains($entity) && ! isset($this->entityInsertions[$oid])) {
+            $this->entityUpdates->attach($entity);
         }
     }
 
@@ -1194,7 +1202,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function isScheduledForUpdate($entity)
     {
-        return isset($this->entityUpdates[spl_object_hash($entity)]);
+        return $this->entityUpdates->contains($entity);
     }
 
 
@@ -1237,9 +1245,7 @@ class UnitOfWork implements PropertyChangedListener
 
         $this->removeFromIdentityMap($entity);
 
-        if (isset($this->entityUpdates[$oid])) {
-            unset($this->entityUpdates[$oid]);
-        }
+        $this->entityUpdates->detach($entity);
 
         if ( ! isset($this->entityDeletions[$oid])) {
             $this->entityDeletions[$oid] = $entity;
@@ -1270,7 +1276,7 @@ class UnitOfWork implements PropertyChangedListener
         $oid = spl_object_hash($entity);
 
         return isset($this->entityInsertions[$oid])
-            || isset($this->entityUpdates[$oid])
+            || $this->entityUpdates->contains($entity)
             || isset($this->entityDeletions[$oid]);
     }
 
@@ -1871,9 +1877,9 @@ class UnitOfWork implements PropertyChangedListener
                     $this->removeFromIdentityMap($entity);
                 }
 
+                $this->entityUpdates->detach($entity);
                 unset(
                     $this->entityInsertions[$oid],
-                    $this->entityUpdates[$oid],
                     $this->entityDeletions[$oid],
                     $this->entityIdentifiers[$oid],
                     $this->entityStates[$oid],
@@ -2212,6 +2218,7 @@ class UnitOfWork implements PropertyChangedListener
     public function clear($entityName = null)
     {
         if ($entityName === null) {
+            $this->entityUpdates = new SplObjectStorage();
             $this->identityMap =
             $this->entityIdentifiers =
             $this->originalEntityData =
@@ -2219,7 +2226,6 @@ class UnitOfWork implements PropertyChangedListener
             $this->entityStates =
             $this->scheduledForDirtyCheck =
             $this->entityInsertions =
-            $this->entityUpdates =
             $this->entityDeletions =
             $this->collectionDeletions =
             $this->collectionUpdates =
