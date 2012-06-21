@@ -82,9 +82,9 @@ class UnitOfWork implements PropertyChangedListener
      * Map of all identifiers of managed entities.
      * Keys are object ids (spl_object_hash).
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $entityIdentifiers = array();
+    private $entityIdentifiers;
 
     /**
      * Map of the original entity data of managed entities.
@@ -134,7 +134,7 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * A list of all pending entity updates.
      *
-     * @var array
+     * @var SplObjectStorage
      */
     private $entityUpdates;
 
@@ -242,6 +242,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->em = $em;
         $this->evm = $em->getEventManager();
         $this->entityUpdates = new SplObjectStorage();
+        $this->entityIdentifiers = new SplObjectStorage();
     }
 
     /**
@@ -804,7 +805,7 @@ class UnitOfWork implements PropertyChangedListener
                 $class->setIdentifierValues($entity, $idValue);
             }
 
-            $this->entityIdentifiers[$oid] = $idValue;
+            $this->entityIdentifiers->attach($entity, $idValue);
         }
 
         $this->entityStates[$oid] = self::STATE_MANAGED;
@@ -911,7 +912,7 @@ class UnitOfWork implements PropertyChangedListener
 
                 $class->reflFields[$idField]->setValue($entity, $id);
 
-                $this->entityIdentifiers[$oid] = array($idField => $id);
+                $this->entityIdentifiers->attach($entity, array($idField => $id));
                 $this->entityStates[$oid] = self::STATE_MANAGED;
                 $this->originalEntityData[$oid][$idField] = $id;
 
@@ -1001,10 +1002,10 @@ class UnitOfWork implements PropertyChangedListener
             }
 
             $persister->delete($entity);
+            $this->entityIdentifiers->detach($entity);
 
             unset(
                 $this->entityDeletions[$oid],
-                $this->entityIdentifiers[$oid],
                 $this->originalEntityData[$oid],
                 $this->entityStates[$oid]
             );
@@ -1129,7 +1130,7 @@ class UnitOfWork implements PropertyChangedListener
 
         $this->entityInsertions[$oid] = $entity;
 
-        if (isset($this->entityIdentifiers[$oid])) {
+        if ($this->entityIdentifiers->contains($entity)) {
             $this->addToIdentityMap($entity);
         }
     }
@@ -1154,7 +1155,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid = spl_object_hash($entity);
 
-        if ( ! isset($this->entityIdentifiers[$oid])) {
+        if ( ! $this->entityIdentifiers->contains($entity)) {
             throw ORMInvalidArgumentException::entityHasNoIdentity($entity, "scheduling for update");
         }
 
@@ -1294,7 +1295,7 @@ class UnitOfWork implements PropertyChangedListener
     public function addToIdentityMap($entity)
     {
         $classMetadata = $this->em->getClassMetadata(get_class($entity));
-        $idHash        = implode(' ', $this->entityIdentifiers[spl_object_hash($entity)]);
+        $idHash        = implode(' ', $this->entityIdentifiers->offsetGet($entity));
 
         if ($idHash === '') {
             throw ORMInvalidArgumentException::entityWithoutIdentity($classMetadata->name, $entity);
@@ -1404,7 +1405,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid           = spl_object_hash($entity);
         $classMetadata = $this->em->getClassMetadata(get_class($entity));
-        $idHash        = implode(' ', $this->entityIdentifiers[$oid]);
+        $idHash        = implode(' ', $this->entityIdentifiers->offsetGet($entity));
 
         if ($idHash === '') {
             throw ORMInvalidArgumentException::entityHasNoIdentity($entity, "remove from identity map");
@@ -1467,12 +1468,12 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid = spl_object_hash($entity);
 
-        if ( ! isset($this->entityIdentifiers[$oid])) {
+        if ( ! $this->entityIdentifiers->contains($entity)) {
             return false;
         }
 
         $classMetadata = $this->em->getClassMetadata(get_class($entity));
-        $idHash        = implode(' ', $this->entityIdentifiers[$oid]);
+        $idHash        = implode(' ', $this->entityIdentifiers->offsetGet($entity));
 
         if ($idHash === '') {
             return false;
@@ -1878,10 +1879,10 @@ class UnitOfWork implements PropertyChangedListener
                 }
 
                 $this->entityUpdates->detach($entity);
+                $this->entityIdentifiers->detach($entity);
                 unset(
                     $this->entityInsertions[$oid],
                     $this->entityDeletions[$oid],
-                    $this->entityIdentifiers[$oid],
                     $this->entityStates[$oid],
                     $this->originalEntityData[$oid]
                 );
@@ -1934,7 +1935,7 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         $this->getEntityPersister($class->name)->refresh(
-            array_combine($class->getIdentifierFieldNames(), $this->entityIdentifiers[$oid]),
+            array_combine($class->getIdentifierFieldNames(), $this->entityIdentifiers->offsetGet($entity)),
             $entity
         );
 
@@ -2183,10 +2184,8 @@ class UnitOfWork implements PropertyChangedListener
                     throw TransactionRequiredException::transactionRequired();
                 }
 
-                $oid = spl_object_hash($entity);
-
                 $this->getEntityPersister($class->name)->lock(
-                    array_combine($class->getIdentifierFieldNames(), $this->entityIdentifiers[$oid]),
+                    array_combine($class->getIdentifierFieldNames(), $this->entityIdentifiers->offsetGet($entity)),
                     $lockMode
                 );
                 break;
@@ -2219,8 +2218,8 @@ class UnitOfWork implements PropertyChangedListener
     {
         if ($entityName === null) {
             $this->entityUpdates = new SplObjectStorage();
+            $this->entityIdentifiers = new SplObjectStorage();
             $this->identityMap =
-            $this->entityIdentifiers =
             $this->originalEntityData =
             $this->entityChangeSets =
             $this->entityStates =
@@ -2372,7 +2371,7 @@ class UnitOfWork implements PropertyChangedListener
             $entity = $this->newInstance($class);
             $oid = spl_object_hash($entity);
 
-            $this->entityIdentifiers[$oid] = $id;
+            $this->entityIdentifiers->attach($entity, $id);
             $this->entityStates[$oid] = self::STATE_MANAGED;
             $this->originalEntityData[$oid] = $data;
             $this->identityMap[$class->rootEntityName][$idHash] = $entity;
@@ -2504,7 +2503,7 @@ class UnitOfWork implements PropertyChangedListener
 
                             // PERF: Inlined & optimized code from UnitOfWork#registerManaged()
                             $newValueOid = spl_object_hash($newValue);
-                            $this->entityIdentifiers[$newValueOid] = $associatedId;
+                            $this->entityIdentifiers->attach($newValue, $associatedId);
                             $this->identityMap[$targetClass->rootEntityName][$relatedIdHash] = $newValue;
                             $this->entityStates[$newValueOid] = self::STATE_MANAGED;
                             // make sure that when an proxy is then finally loaded, $this->originalEntityData is set also!
@@ -2663,7 +2662,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function getEntityIdentifier($entity)
     {
-        return $this->entityIdentifiers[spl_object_hash($entity)];
+        return $this->entityIdentifiers->offsetGet($entity);
     }
 
     /**
@@ -2801,7 +2800,7 @@ class UnitOfWork implements PropertyChangedListener
     {
         $oid = spl_object_hash($entity);
 
-        $this->entityIdentifiers[$oid]  = $id;
+        $this->entityIdentifiers->attach($entity, $id);
         $this->entityStates[$oid]       = self::STATE_MANAGED;
         $this->originalEntityData[$oid] = $data;
 
