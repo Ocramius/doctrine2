@@ -1514,7 +1514,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function persist($entity)
     {
-        $visited = array();
+        $visited = new SplObjectStorage();
 
         $this->doPersist($entity, $visited);
     }
@@ -1526,17 +1526,15 @@ class UnitOfWork implements PropertyChangedListener
      * the already visited entities to prevent infinite recursions.
      *
      * @param object $entity The entity to persist.
-     * @param array $visited The already visited entities.
+     * @param SplObjectStorage $visited The already visited entities.
      */
-    private function doPersist($entity, array &$visited)
+    private function doPersist($entity, SplObjectStorage $visited)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($visited[$oid])) {
+        if ($visited->contains($entity)) {
             return; // Prevent infinite recursion
         }
 
-        $visited[$oid] = $entity; // Mark visited
+        $visited->attach($entity); // Mark visited
 
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -1583,7 +1581,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function remove($entity)
     {
-        $visited = array();
+        $visited = new SplObjectStorage();
 
         $this->doRemove($entity, $visited);
     }
@@ -1595,18 +1593,16 @@ class UnitOfWork implements PropertyChangedListener
      * the already visited entities to prevent infinite recursions.
      *
      * @param object $entity The entity to delete.
-     * @param array $visited The map of the already visited entities.
+     * @param SplObjectStorage $visited The map of the already visited entities.
      * @throws InvalidArgumentException If the instance is a detached entity.
      */
-    private function doRemove($entity, array &$visited)
+    private function doRemove($entity, SplObjectStorage $visited)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($visited[$oid])) {
+        if ($visited->contains($entity)) {
             return; // Prevent infinite recursion
         }
 
-        $visited[$oid] = $entity; // mark visited
+        $visited->attach($entity);
 
         // Cascade first, because scheduleForDelete() removes the entity from the identity map, which
         // can cause problems when a lazy proxy has to be initialized for the cascade operation.
@@ -1653,7 +1649,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function merge($entity)
     {
-        $visited = array();
+        $visited = new SplObjectStorage();
 
         return $this->doMerge($entity, $visited);
     }
@@ -1662,21 +1658,19 @@ class UnitOfWork implements PropertyChangedListener
      * Executes a merge operation on an entity.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      * @return object The managed copy of the entity.
      * @throws OptimisticLockException If the entity uses optimistic locking through a version
      *         attribute and the version check against the managed copy fails.
      * @throws InvalidArgumentException If the entity instance is NEW.
      */
-    private function doMerge($entity, array &$visited, $prevManagedCopy = null, $assoc = null)
+    private function doMerge($entity, SplObjectStorage $visited, $prevManagedCopy = null, $assoc = null)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($visited[$oid])) {
+        if ($visited->contains($entity)) {
             return; // Prevent infinite recursion
         }
 
-        $visited[$oid] = $entity; // mark visited
+        $visited->attach($entity);
 
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -1801,7 +1795,7 @@ class UnitOfWork implements PropertyChangedListener
                                     );
                             $managedCol->setOwner($managedCopy, $assoc2);
                             $prop->setValue($managedCopy, $managedCol);
-                            $this->originalEntityData[$oid][$name] = $managedCol;
+                            $this->originalEntityData[spl_object_hash($entity)][$name] = $managedCol;
                         }
                         if ($assoc2['isCascadeMerge']) {
                             $managedCol->initialize();
@@ -1846,7 +1840,7 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         // Mark the managed copy visited as well
-        $visited[spl_object_hash($managedCopy)] = true;
+        $visited->attach($managedCopy);
 
         $this->cascadeMerge($entity, $managedCopy, $visited);
 
@@ -1861,7 +1855,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function detach($entity)
     {
-        $visited = array();
+        $visited = new SplObjectStorage();
 
         $this->doDetach($entity, $visited);
     }
@@ -1870,18 +1864,16 @@ class UnitOfWork implements PropertyChangedListener
      * Executes a detach operation on the given entity.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      * @param boolean $noCascade if true, don't cascade detach operation
      */
-    private function doDetach($entity, array &$visited, $noCascade = false)
+    private function doDetach($entity, SplObjectStorage $visited, $noCascade = false)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($visited[$oid])) {
+        if ($visited->contains($entity)) {
             return; // Prevent infinite recursion
         }
 
-        $visited[$oid] = $entity; // mark visited
+        $visited->attach($entity);
 
         switch ($this->getEntityState($entity, self::STATE_DETACHED)) {
             case self::STATE_MANAGED:
@@ -1892,6 +1884,7 @@ class UnitOfWork implements PropertyChangedListener
                 $this->entityUpdates->detach($entity);
                 $this->entityIdentifiers->detach($entity);
                 $this->entityStates->detach($entity);
+                $oid = spl_object_hash($entity);
                 unset(
                     $this->entityInsertions[$oid],
                     $this->entityDeletions[$oid],
@@ -1917,7 +1910,7 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function refresh($entity)
     {
-        $visited = array();
+        $visited = new SplObjectStorage();
 
         $this->doRefresh($entity, $visited);
     }
@@ -1929,15 +1922,13 @@ class UnitOfWork implements PropertyChangedListener
      * @param array $visited The already visited entities during cascades.
      * @throws InvalidArgumentException If the entity is not MANAGED.
      */
-    private function doRefresh($entity, array &$visited)
+    private function doRefresh($entity, SplObjectStorage $visited)
     {
-        $oid = spl_object_hash($entity);
-
-        if (isset($visited[$oid])) {
+        if ($visited->contains($entity)) {
             return; // Prevent infinite recursion
         }
 
-        $visited[$oid] = $entity; // mark visited
+        $visited->attach($entity);
 
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -1957,9 +1948,9 @@ class UnitOfWork implements PropertyChangedListener
      * Cascades a refresh operation to associated entities.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      */
-    private function cascadeRefresh($entity, array &$visited)
+    private function cascadeRefresh($entity, SplObjectStorage $visited)
     {
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -1998,9 +1989,9 @@ class UnitOfWork implements PropertyChangedListener
      * Cascades a detach operation to associated entities.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      */
-    private function cascadeDetach($entity, array &$visited)
+    private function cascadeDetach($entity, SplObjectStorage $visited)
     {
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -2040,9 +2031,9 @@ class UnitOfWork implements PropertyChangedListener
      *
      * @param object $entity
      * @param object $managedCopy
-     * @param array $visited
+     * @param SplObjectStorage $visited
      */
-    private function cascadeMerge($entity, $managedCopy, array &$visited)
+    private function cascadeMerge($entity, $managedCopy, SplObjectStorage $visited)
     {
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -2077,10 +2068,10 @@ class UnitOfWork implements PropertyChangedListener
      * Cascades the save operation to associated entities.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      * @param array $insertNow
      */
-    private function cascadePersist($entity, array &$visited)
+    private function cascadePersist($entity, SplObjectStorage $visited)
     {
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -2119,9 +2110,9 @@ class UnitOfWork implements PropertyChangedListener
      * Cascades the delete operation to associated entities.
      *
      * @param object $entity
-     * @param array $visited
+     * @param SplObjectStorage $visited
      */
-    private function cascadeRemove($entity, array &$visited)
+    private function cascadeRemove($entity, SplObjectStorage $visited)
     {
         $class = $this->em->getClassMetadata(get_class($entity));
 
@@ -2247,7 +2238,8 @@ class UnitOfWork implements PropertyChangedListener
                 $this->commitOrderCalculator->clear();
             }
         } else {
-            $visited = array();
+            $visited = new SplObjectStorage();
+
             foreach ($this->identityMap as $className => $entities) {
                 if ($className === $entityName) {
                     foreach ($entities as $entity) {
