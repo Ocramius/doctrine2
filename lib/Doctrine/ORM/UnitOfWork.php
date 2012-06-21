@@ -1479,8 +1479,6 @@ class UnitOfWork implements PropertyChangedListener
      */
     public function isInIdentityMap($entity)
     {
-        $oid = spl_object_hash($entity);
-
         if ( ! $this->entityIdentifiers->contains($entity)) {
             return false;
         }
