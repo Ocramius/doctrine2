@@ -26,29 +26,55 @@ namespace Doctrine\ORM;
  */
 class ORMInvalidArgumentException extends \InvalidArgumentException
 {
+    /**
+     * @static
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function scheduleInsertForManagedEntity($entity)
     {
         return new self("A managed+dirty entity " . self::objToStr($entity) . " can not be scheduled for insertion.");
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function scheduleInsertForRemovedEntity($entity)
     {
         return new self("Removed entity " . self::objToStr($entity) . " can not be scheduled for insertion.");
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function scheduleInsertTwice($entity)
     {
         return new self("Entity " . self::objToStr($entity) . " can not be scheduled for insertion twice.");
     }
 
+    /**
+     * @static
+     * @param $className
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function entityWithoutIdentity($className, $entity)
     {
-        throw new self(
-            "The given entity of type '" . $className . "' (".self::objToStr($entity).") has no identity/no " . 
+        return new self(
+            "The given entity of type '" . $className . "' (".self::objToStr($entity).") has no identity/no " .
             "id values set. It cannot be added to the identity map."
         );
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function readOnlyRequiresManagedEntity($entity)
     {
         return new self("Only managed entities can be marked or checked as read only. But " . self::objToStr($entity) . " is not");
@@ -68,37 +94,73 @@ class ORMInvalidArgumentException extends \InvalidArgumentException
                                ." implement '" . $assoc['targetEntity'] . "#__toString()' to get a clue."));
     }
 
+    /**
+     * @static
+     * @param array $assoc
+     * @param $entry
+     * @return ORMInvalidArgumentException
+     */
     static public function detachedEntityFoundThroughRelationship(array $assoc, $entry)
     {
-        throw new self("A detached entity of type " . $assoc['targetEntity'] . " (" . self::objToStr($entry) . ") "
+        return new self("A detached entity of type " . $assoc['targetEntity'] . " (" . self::objToStr($entry) . ") "
                         . " was found through the relationship '" . $assoc['sourceEntity'] . "#" . $assoc['fieldName'] . "' "
                         . "during cascading a persist operation.");
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @return ORMInvalidArgumentException
+     */
     static public function entityNotManaged($entity)
     {
-        throw new self("Entity " . self::objToStr($entity) . " is not managed. An entity is managed if its fetched " .
+        return new self("Entity " . self::objToStr($entity) . " is not managed. An entity is managed if its fetched " .
                 "from the database or registered as new through EntityManager#persist");
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @param $operation
+     * @return ORMInvalidArgumentException
+     */
     static public function entityHasNoIdentity($entity, $operation)
     {
-        throw new self("Entity has no identity, therefore " . $operation ." cannot be performed. " . self::objToStr($entity));
+        return new self("Entity has no identity, therefore " . $operation ." cannot be performed. " . self::objToStr($entity));
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @param $operation
+     * @return ORMInvalidArgumentException
+     */
     static public function entityIsRemoved($entity, $operation)
     {
-        throw new self("Entity is removed, therefore " . $operation ." cannot be performed. " . self::objToStr($entity));
+        return new self("Entity is removed, therefore " . $operation ." cannot be performed. " . self::objToStr($entity));
     }
 
+    /**
+     * @static
+     * @param $entity
+     * @param $operation
+     * @return ORMInvalidArgumentException
+     */
     static public function detachedEntityCannot($entity, $operation)
     {
-        throw new self("A detached entity was found during " . $operation . " " . self::objToStr($entity));
+        return new self("A detached entity was found during " . $operation . " " . self::objToStr($entity));
     }
 
+    /**
+     * @static
+     * @param $context
+     * @param $given
+     * @param int $parameterIndex
+     * @return ORMInvalidArgumentException
+     */
     public static function invalidObject($context, $given, $parameterIndex = 1)
     {
-        return new self($context .' expects parameter ' . $parameterIndex . 
+        return new self($context .' expects parameter ' . $parameterIndex .
                     ' to be an entity object, '. gettype($given) . ' given.');
     }
 

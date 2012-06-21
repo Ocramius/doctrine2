@@ -615,8 +615,6 @@ class UnitOfWork implements PropertyChangedListener
 
                 if ($orgValue instanceof PersistentCollection) {
                     // A PersistentCollection was de-referenced, so delete it.
-                    $coid = spl_object_hash($orgValue);
-
                     if ($this->collectionDeletions->contains($orgValue)) {
                         continue;
                     }
@@ -726,8 +724,6 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         if ($value instanceof PersistentCollection && $value->isDirty()) {
-            $coid = spl_object_hash($value);
-
             if ($assoc['isOwningSide']) {
                 $this->collectionUpdates->attach($value);
             }
@@ -789,8 +785,6 @@ class UnitOfWork implements PropertyChangedListener
 
     private function persistNew($class, $entity)
     {
-        $oid = spl_object_hash($entity);
-
         if (isset($class->lifecycleCallbacks[Events::prePersist])) {
             $class->invokeLifecycleCallbacks(Events::prePersist, $entity);
         }
@@ -959,7 +953,6 @@ class UnitOfWork implements PropertyChangedListener
         $hasPostUpdateListeners          = $this->evm->hasListeners(Events::postUpdate);
 
         foreach ($this->entityUpdates as $entity) {
-            $oid = spl_object_hash($entity);
             if ($this->em->getClassMetadata(get_class($entity))->name !== $className) {
                 continue;
             }
@@ -1199,7 +1192,7 @@ class UnitOfWork implements PropertyChangedListener
         $extraUpdate = array($entity, $changeset);
 
         if (isset($this->extraUpdates[$oid])) {
-            list($ignored, $changeset2) = $this->extraUpdates[$oid];
+            $changeset2 = $this->extraUpdates[$oid][1];
 
             $extraUpdate = array($entity, $changeset + $changeset2);
         }
@@ -1558,7 +1551,7 @@ class UnitOfWork implements PropertyChangedListener
 
             case self::STATE_REMOVED:
                 // Entity becomes managed again
-                unset($this->entityDeletions[$oid]);
+                unset($this->entityDeletions[spl_object_hash($entity)]);
 
                 $this->entityStates->attach($entity, self::STATE_MANAGED);
                 break;
@@ -1919,7 +1912,7 @@ class UnitOfWork implements PropertyChangedListener
      * Executes a refresh operation on an entity.
      *
      * @param object $entity The entity to refresh.
-     * @param array $visited The already visited entities during cascades.
+     * @param SplObjectStorage $visited The already visited entities during cascades.
      * @throws InvalidArgumentException If the entity is not MANAGED.
      */
     private function doRefresh($entity, SplObjectStorage $visited)
@@ -2069,7 +2062,6 @@ class UnitOfWork implements PropertyChangedListener
      *
      * @param object $entity
      * @param SplObjectStorage $visited
-     * @param array $insertNow
      */
     private function cascadePersist($entity, SplObjectStorage $visited)
     {
@@ -2292,6 +2284,7 @@ class UnitOfWork implements PropertyChangedListener
 
     /**
      * @param ClassMetadata $class
+     * @return object
      */
     private function newInstance($class)
     {
@@ -2503,7 +2496,6 @@ class UnitOfWork implements PropertyChangedListener
                             }
 
                             // PERF: Inlined & optimized code from UnitOfWork#registerManaged()
-                            $newValueOid = spl_object_hash($newValue);
                             $this->entityIdentifiers->attach($newValue, $associatedId);
                             $this->identityMap[$targetClass->rootEntityName][$relatedIdHash] = $newValue;
                             $this->entityStates->attach($newValue, self::STATE_MANAGED);
@@ -2583,7 +2575,7 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Initializes (loads) an uninitialized persistent collection of an entity.
      *
-     * @param PeristentCollection $collection The collection to initialize.
+     * @param PersistentCollection $collection The collection to initialize.
      * @todo Maybe later move to EntityManager#initialize($proxyOrCollection). See DDC-733.
      */
     public function loadCollection(PersistentCollection $collection)
@@ -2762,7 +2754,7 @@ class UnitOfWork implements PropertyChangedListener
     /**
      * Gets a collection persister for a collection-valued association.
      *
-     * @param AssociationMapping $association
+     * @param array $association
      *
      * @return AbstractCollectionPersister
      */
