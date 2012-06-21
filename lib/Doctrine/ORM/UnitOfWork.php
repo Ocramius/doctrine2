@@ -171,9 +171,9 @@ class UnitOfWork implements PropertyChangedListener
      * At the end of the UnitOfWork all these collections will make new snapshots
      * of their data.
      *
-     * @var array
+     * @var SplObjectStorage
      */
-    private $visitedCollections = array();
+    private $visitedCollections;
 
     /**
      * The EntityManager that "owns" this UnitOfWork instance.
@@ -247,6 +247,7 @@ class UnitOfWork implements PropertyChangedListener
         $this->entityStates = new SplObjectStorage();
         $this->collectionDeletions = new SplObjectStorage();
         $this->collectionUpdates = new SplObjectStorage();
+        $this->visitedCollections = new SplObjectStorage();
     }
 
     /**
@@ -366,10 +367,10 @@ class UnitOfWork implements PropertyChangedListener
         $this->entityChangeSets = new SplObjectStorage();
         $this->collectionDeletions = new SplObjectStorage();
         $this->collectionUpdates = new SplObjectStorage();
+        $this->visitedCollections = new SplObjectStorage();
         $this->entityInsertions =
         $this->entityDeletions =
         $this->extraUpdates =
-        $this->visitedCollections =
         $this->scheduledForDirtyCheck =
         $this->orphanRemovals = array();
     }
@@ -729,7 +730,7 @@ class UnitOfWork implements PropertyChangedListener
                 $this->collectionUpdates->attach($value);
             }
 
-            $this->visitedCollections[$coid] = $value;
+            $this->visitedCollections->attach($value);
         }
 
         // Look through the entities, and in any of their associations,
