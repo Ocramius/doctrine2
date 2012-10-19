@@ -597,7 +597,7 @@ class ClassMetadataInfo implements ClassMetadata
     /**
      * The ReflectionProperty instances of the mapped class.
      *
-     * @var array
+     * @var \ReflectionProperty[]
      */
     public $reflFields = array();
 
@@ -685,13 +685,14 @@ class ClassMetadataInfo implements ClassMetadata
             return $id;
         }
 
-        $value = $this->reflFields[$this->identifier[0]]->getValue($entity);
+        $id = $this->identifier[0];
+        $value = $this->reflFields[$id]->getValue($entity);
 
-        if ($value !== null) {
-            return array($this->identifier[0] => $value);
+        if (null === $value) {
+            return array();
         }
 
-        return array();
+        return array($id => $value);
     }
 
     /**
