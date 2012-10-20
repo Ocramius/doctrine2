@@ -350,7 +350,7 @@ class ProxyFactory
                 $allProperties[] = $prop->getName();
             }
 
-            $publicProperties = array('__isInitialized__');
+            $publicProperties = array();
 
             /* @var $prop \ReflectionProperty */
             foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
@@ -426,11 +426,13 @@ class ProxyFactory
             $toUnset[] = '$this->' . $publicProperty->getName();
         }
 
-        if (empty($toUnset)) {
-            return '';
+        $ctorImpl = empty($toUnset) ? '' : 'unset(' . implode(', ', $toUnset) . ');' . "\n";
+
+        foreach($class->getIdentifierFieldNames() as $identifierField) {
+            $ctorImpl .= '$this->' . $identifierField . ' = $identifier[' . var_export($identifierField, true) . "];\n";
         }
 
-        return 'unset(' . implode(', ', $toUnset) . ');';
+        return $ctorImpl;
     }
 
     /**
@@ -467,7 +469,7 @@ class ProxyFactory
         if ($class->reflClass->hasMethod('__get')) {
             $magicGet .= "\n        return parent::__get(\$name)";
         } else {
-            $magicGet .= "\n        throw new \\BadMethodException('Undefined property \"\$name\"');";
+            $magicGet .= "\n        throw new \\BadMethodCallException('Undefined property \"\$name\"');";
         }
 
         return $magicGet;
@@ -483,8 +485,6 @@ namespace <namespace>;
  */
 class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 {
-    private $_identifier;
-
     private $_initializer;
 
     private $_cloner;
@@ -497,9 +497,9 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     {
         <ctorImpl>
 
-        $this->_identifier = $identifier;
+        $this->_initializer = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
+            $proxy->_initializer = $proxy->_cloner = function(){};
 
-        $this->_initializer = function($proxy) use ($entityPersister, $identifier) {
             if ($proxy->__isInitialized__) {
                 return;
             }
@@ -513,11 +513,11 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             if (null === $entityPersister->load($identifier, $proxy)) {
                 throw new \Doctrine\ORM\EntityNotFoundException();
             }
-
-            $proxy->__setInitializer(function(){});
         };
 
-        $this->_cloner = function($proxy) use ($entityPersister, $identifier) {
+        $this->_cloner = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
+            $proxy->_initializer = $proxy->_cloner = function(){};
+
             if ($proxy->__isInitialized__) {
                 return;
             }
