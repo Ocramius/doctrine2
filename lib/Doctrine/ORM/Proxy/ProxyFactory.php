@@ -28,6 +28,7 @@ use Doctrine\Common\Util\ClassUtils;
  *
  * @author Roman Borschel <roman@code-factory.org>
  * @author Giorgio Sironi <piccoloprincipeazzurro@gmail.com>
+ * @author Marco Pivetta <ocramius@gmail.com>
  * @since 2.0
  */
 class ProxyFactory
@@ -158,6 +159,7 @@ class ProxyFactory
         $ctorImpl = $this->_generateCtor($class);
         $methods = $this->_generateMethods($class);
         $magicGet = $this->_generatemagicGet($class);
+        $magicSet = $this->_generatemagicSet($class);
         $cloneImpl = $class->reflClass->hasMethod('__clone') ? 'parent::__clone();' : ''; // hasMethod() checks case-insensitive
 
         $placeholders = array(
@@ -168,6 +170,7 @@ class ProxyFactory
             '<ctorImpl>',
             '<methods>',
             '<magicGet>',
+            '<magicSet>',
             '<sleepImpl>',
             '<wakeupImpl>',
             '<cloneImpl>'
@@ -187,6 +190,7 @@ class ProxyFactory
             $ctorImpl,
             $methods,
             $magicGet,
+            $magicSet,
             $sleepImpl,
             $wakeupImpl,
             $cloneImpl
@@ -224,7 +228,7 @@ class ProxyFactory
         foreach ($class->reflClass->getMethods() as $method) {
             if (
                 $method->isConstructor()
-                || in_array(strtolower($method->getName()), array("__sleep", "__clone", "__wakeup", "__get"))
+                || in_array(strtolower($method->getName()), array("__sleep", "__clone", "__wakeup", "__get", "__set"))
                 || isset($methodNames[$method->getName()])
             ) {
                 continue;
@@ -276,13 +280,13 @@ class ProxyFactory
                     $cast = in_array($class->fieldMappings[$identifier]['type'], array('integer', 'smallint')) ? '(int) ' : '';
 
                     $methods .= '        if ($this->__isInitialized__ === false) {' . "\n";
-                    $methods .= '            return ' . $cast . '$this->_identifier["' . $identifier . '"];' . "\n";
+                    $methods .= '            return ' . $cast . '$this->' . $identifier . ';' . "\n";
                     $methods .= '        }' . "\n";
                 }
 
                 // @todo can actually pack method parameters here via reflection
                 $methods .= '        $cb = $this->_initializer;' . "\n";
-                $methods .= '        $cb($this, ' . var_export($method->getName(), true) . '/*, func_get_arg()*/);' . "\n";
+                $methods .= '        $cb($this, ' . var_export($method->getName(), true) . ', func_get_args());' . "\n";
                 $methods .= '        return parent::' . $method->getName() . '(' . $argumentString . ');';
                 $methods .= "\n" . '    }' . "\n";
             }
@@ -300,7 +304,7 @@ class ProxyFactory
      * ID is interesting for the userland code (for example in views that
      * generate links to the entity, but do not display anything else).
      *
-     * @param ReflectionMethod $method
+     * @param \ReflectionMethod $method
      * @param ClassMetadata $class
      * @return bool
      */
@@ -343,20 +347,14 @@ class ProxyFactory
             $sleepImpl .= "        \$properties = array_diff(\$properties, self::\$_publicProperties);\n";
             $sleepImpl .= "    }\n";
         } else {
-            $allProperties = array('__isInitialized__');
+            $allProperties = array('__isInitialized__', '_originalValues');
 
             /* @var $prop \ReflectionProperty */
             foreach ($class->reflClass->getProperties() as $prop) {
                 $allProperties[] = $prop->getName();
             }
 
-            $publicProperties = array();
-
-            /* @var $prop \ReflectionProperty */
-            foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $prop) {
-                $publicProperties[] = $prop->getName();
-            }
-
+            $publicProperties = $this->_getLazyLoadedProperties($class);
             $protectedProperties = array_diff($allProperties, $publicProperties);
 
             $sleepImpl = "if (\$this->__isInitialized__) {\n";
@@ -382,20 +380,20 @@ class ProxyFactory
         $wakeupImpl = "\$this->_initializer = function(){};\n";
         $wakeupImpl .= "        \$this->_cloner      = function(){};";
 
-        if ($class->reflClass->hasMethod('__wakeup')) {
-            $wakeupImpl .= "\n         parent::__wakeup();";
-        }
-
         $unsetPublicProperties = array();
 
-        foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
-            $unsetPublicProperties[] = '$this->' . $publicProperty->getName();
+        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+            $unsetPublicProperties[] = '$this->' . $persistedPublicProperty;
         }
 
         if (!empty($unsetPublicProperties)) {
             $wakeupImpl .= "\n        if (!\$this->__isInitialized__) {";
             $wakeupImpl .= "\n            unset(" . implode(', ', $unsetPublicProperties) . ");";
             $wakeupImpl .= "\n        }";
+        }
+
+        if ($class->reflClass->hasMethod('__wakeup')) {
+            $wakeupImpl .= "\n        parent::__wakeup();";
         }
 
         return $wakeupImpl;
@@ -405,8 +403,8 @@ class ProxyFactory
     {
         $publicProperties = array();
 
-        foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
-            $publicProperties[$publicProperty->getName()] = true;
+        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+            $publicProperties[$persistedPublicProperty] = true;
         }
 
         return var_export($publicProperties, true);
@@ -422,8 +420,8 @@ class ProxyFactory
     {
         $toUnset = array();
 
-        foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
-            $toUnset[] = '$this->' . $publicProperty->getName();
+        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+            $toUnset[] = '$this->' . $persistedPublicProperty;
         }
 
         $ctorImpl = empty($toUnset) ? '' : 'unset(' . implode(', ', $toUnset) . ');' . "\n";
@@ -436,7 +434,7 @@ class ProxyFactory
     }
 
     /**
-     * Generates the code for the __get method for a proxy class.
+     * Generates the code for the __set method for a proxy class.
      *
      * @param ClassMetadata $class
      * @return string
@@ -453,11 +451,6 @@ class ProxyFactory
 
         if (!empty($publicProperties)) {
             $magicGet .= "\n\n        if (isset(self::\$_publicProperties[\$name])) {";
-            $magicGet .= "\n            foreach (self::\$_publicProperties as \$property) {";
-            $magicGet .= "\n                if (!isset(\$this->\$name)) {";
-            $magicGet .= "\n                    \$this->\$name = null;";
-            $magicGet .= "\n                }";
-            $magicGet .= "\n            }\n";
 
             $magicGet .= "\n            \$cb = \$this->_initializer;";
             $magicGet .= "\n            \$cb(\$this, '__get', array(\$name));";
@@ -473,6 +466,65 @@ class ProxyFactory
         }
 
         return $magicGet;
+    }
+
+    /**
+     * Generates the code for the __get method for a proxy class.
+     *
+     * @param ClassMetadata $class
+     * @return string
+     */
+    private function _generateMagicSet(ClassMetadata $class)
+    {
+        $magicSet = '';
+
+        $publicProperties = array();
+
+        foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
+            $publicProperties[$publicProperty->getName()] = true;
+        }
+
+        if (!empty($publicProperties) || $class->reflClass->hasMethod('__set')) {
+            $magicSet .= "public function __set(\$name, \$value)\n";
+            $magicSet .= "    {";
+
+            if (!empty($publicProperties)) {
+                $magicSet .= "\n    if (isset(self::\$_publicProperties[\$name])) {";
+                $magicSet .= "\n            \$cb = \$this->_initializer;";
+                $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
+                $magicSet .= "\n            \$this->\$name = \$value;";
+                $magicSet .= "\n\n            return;";
+                $magicSet .= "\n        }";
+            } else {
+                $magicSet .= "\n            \$cb = \$this->_initializer;";
+                $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
+            }
+
+            if ($class->reflClass->hasMethod('__set')) {
+                $magicSet .= "\n\n        return parent::__set(\$name, \$value)";
+            } else {
+                $magicSet .= "\n        throw new \\BadMethodCallException('Undefined property \"' . \$name . '\"');";
+            }
+
+            $magicSet .= "\n    }";
+        }
+
+        return $magicSet;
+    }
+
+    private function _getLazyLoadedProperties(ClassMetadata $class)
+    {
+        $properties = array();
+
+        foreach ($class->reflClass->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
+            $name = $property->getName();
+
+            if (($class->hasField($name) || $class->hasAssociation($name)) && !$class->isIdentifier($name)) {
+                $properties[] = $name;
+            }
+        }
+
+        return $properties;
     }
 
     /** Proxy class code template */
@@ -491,17 +543,25 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 
     private static $_publicProperties = <publicProps>;
 
+    private $_originalValues = array();
+
     public $__isInitialized__ = false;
 
     public function __construct($entityPersister, $identifier)
     {
-        <ctorImpl>
+        $this->_originalValues = get_object_vars($this);
 
-        $this->_initializer = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
+        $this->_initializer = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier) {
             $proxy->_initializer = $proxy->_cloner = function(){};
 
             if ($proxy->__isInitialized__) {
                 return;
+            }
+
+            foreach (self::$_publicProperties as $propertyName => $property) {
+                if (!isset($proxy->$propertyName)) {
+                    $this->$propertyName = isset($this->_originalValues[$propertyName]) ? $this->_originalValues[$propertyName] : null;
+                }
             }
 
             $proxy->__isInitialized__ = true;
@@ -523,7 +583,6 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             }
 
             $proxy->__isInitialized__ = true;
-            $proxy->__setInitializer(function(){});
             $class = $entityPersister->getClassMetadata();
             $original = $entityPersister->load($identifier);
 
@@ -535,14 +594,18 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
                 $reflProperty->setValue($proxy, $reflProperty->getValue($original));
             }
         };
+
+        <ctorImpl>
     }
 
-    /** @private */
+    /**
+     * @private
+     * @todo remove
+     */
     public function __load()
     {
-        // @todo remove
         $cb = $this->_initializer;
-        $cb($this, \'__load\');
+        $cb($this, \'__load\', array());
     }
 
     /**
@@ -570,6 +633,8 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         <magicGet>
     }
 
+    /*<magicSet>*/
+
     public function __sleep()
     {
         <sleepImpl>
@@ -583,7 +648,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function __clone()
     {
         $cb = $this->_cloner;
-        $cb($this);
+        $cb($this, \'__clone\');
         <cloneImpl>
     }
 }

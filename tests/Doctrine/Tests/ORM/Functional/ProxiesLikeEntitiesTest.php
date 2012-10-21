@@ -2,6 +2,8 @@
 
 namespace Doctrine\Tests\ORM\Functional;
 
+require_once __DIR__ . '/../../TestInit.php';
+
 use Doctrine\Common\Util\ClassUtils,
     Doctrine\Tests\Models\CMS\CmsUser,
     Doctrine\Tests\Proxies\__CG__\Doctrine\Tests\Models\CMS\CmsUser as Proxy;
@@ -12,7 +14,7 @@ use Doctrine\Common\Util\ClassUtils,
  * The test considers two possible cases:
  *  a) __initialized__ = true and no identifier set in proxy
  *  b) __initialized__ = false and identifier set in proxy and in property
- * @todo All other cases would cause lazy loading issues
+ * @todo All other cases would cause lazy loading
  */
 class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
 {
@@ -27,6 +29,11 @@ class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
         try {
             $this->_schemaTool->createSchema(array(
                 $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsUser'),
+                $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsPhonenumber'),
+                $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsArticle'),
+                $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsAddress'),
+                $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsEmail'),
+                $this->_em->getClassMetadata('Doctrine\Tests\Models\CMS\CmsGroup'),
             ));
         } catch (\Exception $e) {
         }
@@ -65,14 +72,18 @@ class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
 
     public function testEntityWithIdentifier()
     {
-        // Considering case (b)
-        $persister = $this->_em->getUnitOfWork()->getEntityPersister('Doctrine\Tests\Models\CMS\CmsUser');
-        $uninitializedProxy = new Proxy($persister, array('id' => $this->user->getId()));
-        $uninitializedProxy->id = $this->user->getId();
+        $userId = $this->user->getId();
+        /* @var $uninitializedProxy \Doctrine\Tests\Proxies\__CG__\Doctrine\Tests\Models\CMS\CmsUser */
+        $uninitializedProxy = $this->_em->getReference('Doctrine\Tests\Models\CMS\CmsUser', $userId);
+        $this->assertInstanceOf('Doctrine\Tests\Proxies\__CG__\Doctrine\Tests\Models\CMS\CmsUser', $uninitializedProxy);
+
+        // moved
         $uninitializedProxy->username = 'ocra';
         $uninitializedProxy->name = 'Marco Pivetta';
+
+        $this->assertFalse($uninitializedProxy->__isInitialized());
         $this->_em->persist($uninitializedProxy);
-        $this->_em->flush();
+        $this->_em->flush($uninitializedProxy);
         $this->assertEquals($this->user->getId(), $uninitializedProxy->getId());
         $this->_em->remove($uninitializedProxy);
         $this->_em->flush();
