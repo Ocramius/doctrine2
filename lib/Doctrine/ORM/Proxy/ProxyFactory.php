@@ -285,7 +285,7 @@ class ProxyFactory
                 }
 
                 // @todo can actually pack method parameters here via reflection
-                $methods .= '        $cb = $this->_initializer;' . "\n";
+                $methods .= '        $cb = $this->__initializer__;' . "\n";
                 $methods .= '        $cb($this, ' . var_export($method->getName(), true) . ', func_get_args());' . "\n";
                 $methods .= '        return parent::' . $method->getName() . '(' . $argumentString . ');';
                 $methods .= "\n" . '    }' . "\n";
@@ -377,8 +377,8 @@ class ProxyFactory
      */
     private function _generateWakeup(ClassMetadata $class)
     {
-        $wakeupImpl = "\$this->_initializer = function(){};\n";
-        $wakeupImpl .= "        \$this->_cloner      = function(){};";
+        $wakeupImpl = "\$this->__initializer__ = function(){};\n";
+        $wakeupImpl .= "        \$this->__cloner__      = function(){};";
 
         $unsetPublicProperties = array();
 
@@ -452,7 +452,7 @@ class ProxyFactory
         if (!empty($publicProperties)) {
             $magicGet .= "\n\n        if (isset(self::\$_publicProperties[\$name])) {";
 
-            $magicGet .= "\n            \$cb = \$this->_initializer;";
+            $magicGet .= "\n            \$cb = \$this->__initializer__;";
             $magicGet .= "\n            \$cb(\$this, '__get', array(\$name));";
 
             $magicGet .= "\n\n            return \$this->\$name;";
@@ -490,13 +490,13 @@ class ProxyFactory
 
             if (!empty($publicProperties)) {
                 $magicSet .= "\n    if (isset(self::\$_publicProperties[\$name])) {";
-                $magicSet .= "\n            \$cb = \$this->_initializer;";
+                $magicSet .= "\n            \$cb = \$this->__initializer__;";
                 $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
                 $magicSet .= "\n            \$this->\$name = \$value;";
                 $magicSet .= "\n\n            return;";
                 $magicSet .= "\n        }";
             } else {
-                $magicSet .= "\n            \$cb = \$this->_initializer;";
+                $magicSet .= "\n            \$cb = \$this->__initializer__;";
                 $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
             }
 
@@ -537,9 +537,9 @@ namespace <namespace>;
  */
 class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 {
-    private $_initializer;
+    public $__initializer__;
 
-    private $_cloner;
+    public $__cloner__;
 
     private static $_publicProperties = <publicProps>;
 
@@ -550,17 +550,19 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function __construct($entityPersister, $identifier)
     {
         $this->_originalValues = get_object_vars($this);
+        $originalValues = $this->_originalValues;
+        $publicProperties = self::$_publicProperties;
 
-        $this->_initializer = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier) {
-            $proxy->_initializer = $proxy->_cloner = function(){};
+        $this->__initializer__ = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier, $originalValues, $publicProperties) {
+            $proxy->__initializer__ = $proxy->__cloner__ = function(){};
 
             if ($proxy->__isInitialized__) {
                 return;
             }
 
-            foreach (self::$_publicProperties as $propertyName => $property) {
+            foreach ($publicProperties as $propertyName => $property) {
                 if (!isset($proxy->$propertyName)) {
-                    $this->$propertyName = isset($this->_originalValues[$propertyName]) ? $this->_originalValues[$propertyName] : null;
+                    $this->$propertyName = isset($originalValues[$propertyName]) ? $originalValues[$propertyName] : null;
                 }
             }
 
@@ -575,8 +577,8 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             }
         };
 
-        $this->_cloner = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
-            $proxy->_initializer = $proxy->_cloner = function(){};
+        $this->__cloner__ = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
+            $proxy->__initializer__ = $proxy->__cloner__ = function(){};
 
             if ($proxy->__isInitialized__) {
                 return;
@@ -604,7 +606,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
      */
     public function __load()
     {
-        $cb = $this->_initializer;
+        $cb = $this->__initializer__;
         $cb($this, \'__load\', array());
     }
 
@@ -623,7 +625,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
      */
     public function __setInitializer($initializer)
     {
-        $this->_initializer = $initializer;
+        $this->__initializer__ = $initializer;
     }
 
     <methods>
@@ -647,7 +649,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 
     public function __clone()
     {
-        $cb = $this->_cloner;
+        $cb = $this->__cloner__;
         $cb($this, \'__clone\');
         <cloneImpl>
     }
