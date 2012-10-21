@@ -513,7 +513,7 @@ class UnitOfWork implements PropertyChangedListener
         $actualData = array();
 
         foreach ($class->reflFields as $name => $refProp) {
-            $value = $refProp->getValue($entity);
+            $value = $this->getFieldValue($entity, $refProp);
 
             if ($class->isCollectionValuedAssociation($name) && $value !== null && ! ($value instanceof PersistentCollection)) {
                 // If $value is not a Collection then use an ArrayCollection.
@@ -649,7 +649,9 @@ class UnitOfWork implements PropertyChangedListener
 
         // Look for changes in associations of the entity
         foreach ($class->associationMappings as $field => $assoc) {
-            if (($val = $class->reflFields[$field]->getValue($entity)) !== null) {
+            $val = $this->getFieldValue($entity, $class->reflFields[$field]);
+
+            if (null !== $val) {
                 $this->computeAssociationChanges($assoc, $val);
                 if (!isset($this->entityChangeSets[$oid]) &&
                     $assoc['isOwningSide'] &&
@@ -865,7 +867,8 @@ class UnitOfWork implements PropertyChangedListener
 
         foreach ($class->reflFields as $name => $refProp) {
             if ( ! $class->isIdentifier($name) || ! $class->isIdGeneratorIdentity()) {
-                $actualData[$name] = $refProp->getValue($entity);
+                // no need for $this->getFieldValue() here unless also identifiers get lazy loaded (DCOM-96)
+                $actualData[$name] = $class->getFieldValue($entity, $name);
             }
         }
 
@@ -1782,8 +1785,9 @@ class UnitOfWork implements PropertyChangedListener
             }
 
             if ($class->isVersioned) {
-                $managedCopyVersion = $class->reflFields[$class->versionField]->getValue($managedCopy);
-                $entityVersion = $class->reflFields[$class->versionField]->getValue($entity);
+                $reflField = $class->reflFields[$class->versionField];
+                $managedCopyVersion = $this->getFieldValue($managedCopy, $reflField);
+                $entityVersion = $this->getFieldValue($entity, $reflField);
 
                 // Throw exception if versions dont match.
                 if ($managedCopyVersion != $entityVersion) {
@@ -1797,12 +1801,12 @@ class UnitOfWork implements PropertyChangedListener
                 $prop->setAccessible(true);
                 if ( ! isset($class->associationMappings[$name])) {
                     if ( ! $class->isIdentifier($name)) {
-                        $prop->setValue($managedCopy, $prop->getValue($entity));
+                        $prop->setValue($managedCopy, $this->getFieldValue($entity, $prop));
                     }
                 } else {
                     $assoc2 = $class->associationMappings[$name];
                     if ($assoc2['type'] & ClassMetadata::TO_ONE) {
-                        $other = $prop->getValue($entity);
+                        $other = $this->getFieldValue($entity, $prop);
                         if ($other === null) {
                             $prop->setValue($managedCopy, null);
                         } else if ($other instanceof Proxy && !$other->__isInitialized__) {
@@ -1823,14 +1827,14 @@ class UnitOfWork implements PropertyChangedListener
                             $prop->setValue($managedCopy, $other);
                         }
                     } else {
-                        $mergeCol = $prop->getValue($entity);
+                        $mergeCol = $this->getFieldValue($entity, $prop);
                         if ($mergeCol instanceof PersistentCollection && !$mergeCol->isInitialized()) {
                             // do not merge fields marked lazy that have not been fetched.
                             // keep the lazy persistent collection of the managed copy.
                             continue;
                         }
 
-                        $managedCol = $prop->getValue($managedCopy);
+                        $managedCol = $this->getFieldValue($managedCopy, $prop);
                         if (!$managedCol) {
                             $managedCol = new PersistentCollection($this->em,
                                     $this->em->getClassMetadata($assoc2['targetEntity']),
@@ -1858,7 +1862,7 @@ class UnitOfWork implements PropertyChangedListener
 
                 if ($class->isChangeTrackingNotify()) {
                     // Just treat all properties as changed, there is no other choice.
-                    $this->propertyChanged($managedCopy, $name, null, $prop->getValue($managedCopy));
+                    $this->propertyChanged($managedCopy, $name, null, $this->getFieldValue($managedCopy, $prop));
                 }
             }
 
@@ -1874,7 +1878,7 @@ class UnitOfWork implements PropertyChangedListener
             if ($assoc['type'] & ClassMetadata::TO_ONE) {
                 $prevClass->reflFields[$assocField]->setValue($prevManagedCopy, $managedCopy);
             } else {
-                $prevClass->reflFields[$assocField]->getValue($prevManagedCopy)->add($managedCopy);
+                $this->getFieldValue($prevManagedCopy, $prevClass->reflFields[$assocField])->add($managedCopy);
 
                 if ($assoc['type'] == ClassMetadata::ONE_TO_MANY) {
                     $class->reflFields[$assoc['mappedBy']]->setValue($managedCopy, $prevManagedCopy);
@@ -2008,7 +2012,7 @@ class UnitOfWork implements PropertyChangedListener
         );
 
         foreach ($associationMappings as $assoc) {
-            $relatedEntities = $class->reflFields[$assoc['fieldName']]->getValue($entity);
+            $relatedEntities = $this->getFieldValue($entity, $class->reflFields[$assoc['fieldName']]);
 
             switch (true) {
                 case ($relatedEntities instanceof PersistentCollection):
@@ -2049,7 +2053,7 @@ class UnitOfWork implements PropertyChangedListener
         );
 
         foreach ($associationMappings as $assoc) {
-            $relatedEntities = $class->reflFields[$assoc['fieldName']]->getValue($entity);
+            $relatedEntities = $this->getFieldValue($entity, $class->reflFields[$assoc['fieldName']]);
 
             switch (true) {
                 case ($relatedEntities instanceof PersistentCollection):
@@ -2091,10 +2095,10 @@ class UnitOfWork implements PropertyChangedListener
         );
 
         foreach ($associationMappings as $assoc) {
-            $relatedEntities = $class->reflFields[$assoc['fieldName']]->getValue($entity);
+            $relatedEntities = $this->getFieldValue($entity, $class->reflFields[$assoc['fieldName']]);
 
             if ($relatedEntities instanceof Collection) {
-                if ($relatedEntities === $class->reflFields[$assoc['fieldName']]->getValue($managedCopy)) {
+                if ($relatedEntities === $this->getFieldValue($managedCopy, $class->reflFields[$assoc['fieldName']])) {
                     continue;
                 }
 
@@ -2130,7 +2134,7 @@ class UnitOfWork implements PropertyChangedListener
         );
 
         foreach ($associationMappings as $assoc) {
-            $relatedEntities = $class->reflFields[$assoc['fieldName']]->getValue($entity);
+            $relatedEntities = $this->getFieldValue($entity, $class->reflFields[$assoc['fieldName']]);
 
             switch (true) {
                 case ($relatedEntities instanceof PersistentCollection):
@@ -2175,7 +2179,7 @@ class UnitOfWork implements PropertyChangedListener
                 $entity->__load();
             }
 
-            $relatedEntities = $class->reflFields[$assoc['fieldName']]->getValue($entity);
+            $relatedEntities = $this->getFieldValue($entity, $class->reflFields[$assoc['fieldName']]);
 
             switch (true) {
                 case ($relatedEntities instanceof Collection):
@@ -2227,7 +2231,7 @@ class UnitOfWork implements PropertyChangedListener
                     return;
                 }
 
-                $entityVersion = $class->reflFields[$class->versionField]->getValue($entity);
+                $entityVersion = $this->getFieldValue($entity, $class->reflFields[$class->versionField]);
 
                 if ($entityVersion != $lockVersion) {
                     throw OptimisticLockException::lockFailedVersionMissmatch($entity, $lockVersion, $entityVersion);
@@ -3068,5 +3072,16 @@ class UnitOfWork implements PropertyChangedListener
         }
 
         return isset($this->readOnlyObjects[spl_object_hash($object)]);
+    }
+
+    /**
+     * @param $entity
+     * @param \ReflectionProperty $reflField
+     * @param null $default
+     * @return mixed|null
+     */
+    private function getFieldValue($entity, \ReflectionProperty $reflField, $default = null)
+    {
+        return $reflField->isPublic() && !isset($entity->{$reflField->getName()}) ? $default : $reflField->getValue($entity);
     }
 }

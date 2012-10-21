@@ -228,7 +228,7 @@ class ProxyFactory
         foreach ($class->reflClass->getMethods() as $method) {
             if (
                 $method->isConstructor()
-                || in_array(strtolower($method->getName()), array("__sleep", "__clone", "__wakeup", "__get", "__set"))
+                || in_array(strtolower($method->getName()), array('__sleep', '__clone', '__wakeup', '__get'))
                 || isset($methodNames[$method->getName()])
             ) {
                 continue;
@@ -244,6 +244,7 @@ class ProxyFactory
                 $methods .= $method->getName() . '(';
                 $firstParam = true;
                 $parameterString = $argumentString = '';
+                $parameters = array();
 
                 foreach ($method->getParameters() as $param) {
                     if ($firstParam) {
@@ -264,6 +265,7 @@ class ProxyFactory
                         $parameterString .= '&';
                     }
 
+                    $parameters[] = '$' . $param->getName();
                     $parameterString .= '$' . $param->getName();
                     $argumentString  .= '$' . $param->getName();
 
@@ -286,7 +288,7 @@ class ProxyFactory
 
                 // @todo can actually pack method parameters here via reflection
                 $methods .= '        $cb = $this->__initializer__;' . "\n";
-                $methods .= '        $cb($this, ' . var_export($method->getName(), true) . ', func_get_args());' . "\n";
+                $methods .= '        $cb($this, ' . var_export($method->getName(), true) . ', array(' . implode(', ', $parameters) . '));' . "\n";
                 $methods .= '        return parent::' . $method->getName() . '(' . $argumentString . ');';
                 $methods .= "\n" . '    }' . "\n";
             }
@@ -592,8 +594,8 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
                 throw new \Doctrine\ORM\EntityNotFoundException();
             }
 
-            foreach ($class->reflFields as $reflProperty) {
-                $reflProperty->setValue($proxy, $reflProperty->getValue($original));
+            foreach ($class->reflFields as $name => $reflProperty) {
+                $reflProperty->setValue($proxy, $class->getFieldValue($original, $name));
             }
         };
 

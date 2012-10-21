@@ -196,7 +196,7 @@ class ObjectHydrator extends AbstractHydrator
     {
         $oid      = spl_object_hash($entity);
         $relation = $class->associationMappings[$fieldName];
-        $value    = $class->reflFields[$fieldName]->getValue($entity);
+        $value    = $class->getFieldValue($entity, $fieldName);
 
         if ($value === null) {
             $value = new ArrayCollection;
@@ -405,7 +405,7 @@ class ObjectHydrator extends AbstractHydrator
 
                 // Check the type of the relation (many or single-valued)
                 if ( ! ($relation['type'] & ClassMetadata::TO_ONE)) {
-                    $reflFieldValue = $reflField->getValue($parentObject);
+                    $reflFieldValue = $parentClass->getFieldValue($parentObject, $relationField);
                     // PATH A: Collection-valued association
                     if (isset($nonemptyComponents[$dqlAlias])) {
                         $collKey = $oid . $relationField;
@@ -454,8 +454,14 @@ class ObjectHydrator extends AbstractHydrator
 
                 } else {
                     // PATH B: Single-valued association
-                    $reflFieldValue = $reflField->getValue($parentObject);
-                    if ( ! $reflFieldValue || isset($this->_hints[Query::HINT_REFRESH]) || ($reflFieldValue instanceof Proxy && !$reflFieldValue->__isInitialized__)) {
+                    /* @var $reflField \ReflectionProperty */
+                    $reflFieldValue = $parentClass->getFieldValue($parentObject, $relationField);
+
+                    if (
+                        ! $reflFieldValue
+                        || isset($this->_hints[Query::HINT_REFRESH])
+                        || ($reflFieldValue instanceof Proxy && !$reflFieldValue->__isInitialized__)
+                    ) {
                         // we only need to take action if this value is null,
                         // we refresh the entity or its an unitialized proxy.
                         if (isset($nonemptyComponents[$dqlAlias])) {
