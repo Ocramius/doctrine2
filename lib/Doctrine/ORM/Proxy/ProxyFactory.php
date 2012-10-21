@@ -562,7 +562,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 
             foreach ($publicProperties as $propertyName => $property) {
                 if (!isset($proxy->$propertyName)) {
-                    $this->$propertyName = isset($originalValues[$propertyName]) ? $originalValues[$propertyName] : null;
+                    $proxy->$propertyName = isset($originalValues[$propertyName]) ? $originalValues[$propertyName] : null;
                 }
             }
 
