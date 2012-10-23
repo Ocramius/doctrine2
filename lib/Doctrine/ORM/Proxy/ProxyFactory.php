@@ -349,14 +349,14 @@ class ProxyFactory
             $sleepImpl .= "        \$properties = array_diff(\$properties, self::\$_publicProperties);\n";
             $sleepImpl .= "    }\n";
         } else {
-            $allProperties = array('__isInitialized__', '_originalValues');
+            $allProperties = array('__isInitialized__');
 
             /* @var $prop \ReflectionProperty */
             foreach ($class->reflClass->getProperties() as $prop) {
                 $allProperties[] = $prop->getName();
             }
 
-            $publicProperties = $this->_getLazyLoadedProperties($class);
+            $publicProperties = $this->_getLazyLoadedPublicProperties($class);
             $protectedProperties = array_diff($allProperties, $publicProperties);
 
             $sleepImpl = "if (\$this->__isInitialized__) {\n";
@@ -384,7 +384,7 @@ class ProxyFactory
 
         $unsetPublicProperties = array();
 
-        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+        foreach ($this->_getLazyLoadedPublicProperties($class) as $persistedPublicProperty) {
             $unsetPublicProperties[] = '$this->' . $persistedPublicProperty;
         }
 
@@ -405,7 +405,7 @@ class ProxyFactory
     {
         $publicProperties = array();
 
-        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+        foreach ($this->_getLazyLoadedPublicProperties($class) as $persistedPublicProperty) {
             $publicProperties[$persistedPublicProperty] = true;
         }
 
@@ -421,12 +421,16 @@ class ProxyFactory
     private function _generateCtor(ClassMetadata $class)
     {
         $toUnset = array();
+        $toStore = array();
+        $lazyLoadedProperties = $this->_getLazyLoadedPublicProperties($class);
 
-        foreach ($this->_getLazyLoadedProperties($class) as $persistedPublicProperty) {
+        foreach ($lazyLoadedProperties as $persistedPublicProperty) {
+            $toStore[] = var_export($persistedPublicProperty, true) . ' => $this->' . $persistedPublicProperty;
             $toUnset[] = '$this->' . $persistedPublicProperty;
         }
 
-        $ctorImpl = empty($toUnset) ? '' : 'unset(' . implode(', ', $toUnset) . ');' . "\n";
+        $ctorImpl = '$originalValues = array(' . implode(', ', $toStore) . '); ';
+        $ctorImpl .= empty($toUnset) ? '' : 'unset(' . implode(', ', $toUnset) . ');' . "\n";
 
         foreach($class->getIdentifierFieldNames() as $identifierField) {
             $ctorImpl .= '$this->' . $identifierField . ' = $identifier[' . var_export($identifierField, true) . "];\n";
@@ -514,7 +518,7 @@ class ProxyFactory
         return $magicSet;
     }
 
-    private function _getLazyLoadedProperties(ClassMetadata $class)
+    private function _getLazyLoadedPublicProperties(ClassMetadata $class)
     {
         $properties = array();
 
@@ -545,15 +549,13 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 
     private static $_publicProperties = <publicProps>;
 
-    private $_originalValues = array();
-
     public $__isInitialized__ = false;
 
     public function __construct($entityPersister, $identifier)
     {
-        $this->_originalValues = get_object_vars($this);
-        $originalValues = $this->_originalValues;
         $publicProperties = self::$_publicProperties;
+
+        <ctorImpl>
 
         $this->__initializer__ = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier, $originalValues, $publicProperties) {
             $proxy->__initializer__ = $proxy->__cloner__ = function(){};
@@ -598,8 +600,6 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
                 $reflProperty->setValue($proxy, $class->getFieldValue($original, $name));
             }
         };
-
-        <ctorImpl>
     }
 
     /**
