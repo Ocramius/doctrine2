@@ -4,7 +4,6 @@ namespace Doctrine\Tests\ORM\Proxy;
 
 use Doctrine\ORM\Proxy\ProxyFactory;
 use Doctrine\ORM\Mapping\ClassMetadata;
-use Doctrine\Common\Persistence\Mapping\RuntimeReflectionService;
 use PHPUnit_Framework_TestCase;
 use ReflectionClass;
 use LazyLoadableObject;
@@ -39,6 +38,14 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
      */
     protected $lazyObject;
 
+    /**
+     * @var bool flag used to avoid re-generating proxy classes at every test
+     */
+    protected $generated = false;
+
+    /**
+     * {@inheritDoc}
+     */
     public function setUp()
     {
         // @todo move proxy generation to static::setUpBeforeClass
@@ -117,8 +124,11 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             ->method('getClassMetadata')
             ->will($this->returnValue($this->lazyLoadableObjectMetadata));
 
-        $this->proxyFactory->generateProxyClasses(array($metadata));
-        require_once __DIR__ . '/generated/__CG__LazyLoadableObject.php';
+        if (!$this->generated) {
+            $this->proxyFactory->generateProxyClasses(array($metadata));
+            require_once __DIR__ . '/generated/__CG__LazyLoadableObject.php';
+            $this->generated = true;
+        }
 
         $this->lazyObject = $proxy = new LazyLoadableObjectProxy(
             $this->persisterMock,
@@ -262,7 +272,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $this->markTestIncomplete('better exception needed - define in doctrine/common');
     }
 
-    public function testCloningCallsCloner()
+    public function testCloningCallsClonerWithClonedObject()
     {
         $cb = $this->getMock('stdClass', array('cb'));
         $cb->expects($this->once())->method('cb');
@@ -289,21 +299,107 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             $cb->cb();
         });
 
-        $this->assertSame('publicTransientFieldValue', $this->lazyObject->publicTransientField);
+        $this->assertSame(
+            'publicTransientFieldValue',
+            $this->lazyObject->publicTransientField,
+            'fetching public transient field won\'t trigger lazy loading'
+        );
+        $property = $this
+            ->lazyLoadableObjectMetadata
+            ->getReflectionClass()
+            ->getProperty('protectedTransientField');
+        $property->setAccessible(true);
+        $this->assertSame(
+            'protectedTransientFieldValue',
+            $property->getValue($this->lazyObject),
+            'fetching protected transient field via reflection won\'t trigger lazy loading'
+        );
     }
 
-    public function testCloning()
+    /**
+     * Provided to guarantee backwards compatibility
+     */
+    public function testLoadProxyMethod()
     {
-        $this->markTestIncomplete('TBD');
+        $cb = $this->getMock('stdClass', array('cb'));
+        $cb->expects($this->once())->method('cb')->with($this->lazyObject);
+
+        $this->lazyObject->__setInitializer(function($proxy, $method, $parameters) use ($cb) {
+            $this->assertSame('__load', $method);
+            $this->assertSame(array(), $parameters);
+            $cb->cb($proxy);
+        });
+
+        $this->lazyObject->__load();
     }
 
-    public function testLoadingWithPersister()
+    public function testLoadingWithPersisterWillBeTriggeredOnlyOnce()
     {
-        $this->markTestIncomplete('TBD');
+        $this
+            ->persisterMock
+            ->expects($this->once())
+            ->method('load')
+            ->with(
+            array(
+                'publicIdentifierField' => 'publicIdentifierFieldValue',
+                'protectedIdentifierField' => 'protectedIdentifierFieldValue',
+            ),
+            $this->lazyObject
+        )
+            ->will($this->returnCallback(function($id, LazyLoadableObjectProxy $lazyObject) {
+            // setting a value to verify that the persister can actually set something in the object
+            $lazyObject->publicAssociation = $id['publicIdentifierField'] . '-test';
+            return true;
+        }));
+
+        $this->lazyObject->__load();
+        $this->lazyObject->__load();
+    }
+
+    public function testFailedLoadingWillThrowOrmException()
+    {
+        $this
+            ->persisterMock
+            ->expects($this->any())
+            ->method('load')
+            ->will($this->returnValue(null));
+
+        $this->setExpectedException('Doctrine\ORM\EntityNotFoundException');
+        $this->lazyObject->__load();
     }
 
     public function testCloningWithPersister()
     {
-        $this->markTestIncomplete('TBD');
+        $this->lazyObject->publicTransientField = 'should-not-change';
+        $this
+            ->persisterMock
+            ->expects($this->exactly(2))
+            ->method('load')
+            ->with(array(
+                'publicIdentifierField' => 'publicIdentifierFieldValue',
+                'protectedIdentifierField' => 'protectedIdentifierFieldValue',
+            ))
+            ->will($this->returnCallback(function() {
+                $blueprint = new LazyLoadableObject();
+                $blueprint->publicPersistentField = 'checked-persistent-field';
+                $blueprint->publicAssociation = 'checked-association-field';
+                $blueprint->publicTransientField = 'checked-transient-field';
+
+                return $blueprint;
+            }));
+
+        $firstClone = clone $this->lazyObject;
+        $this->assertSame('checked-persistent-field', $firstClone->publicPersistentField, 'Persistent fields are cloned correctly');
+        $this->assertSame('checked-association-field', $firstClone->publicAssociation, 'Associations are cloned correctly');
+        $this->assertSame('should-not-change', $firstClone->publicTransientField, 'Transitient fields are not overwritten');
+
+        $secondClone = clone $this->lazyObject;
+        $this->assertSame('checked-persistent-field', $secondClone->publicPersistentField, 'Persistent fields are cloned correctly');
+        $this->assertSame('checked-association-field', $secondClone->publicAssociation, 'Associations are cloned correctly');
+        $this->assertSame('should-not-change', $secondClone->publicTransientField, 'Transitient fields are not overwritten');
+
+        // those should not trigger lazy loading
+        $firstClone->__load();
+        $secondClone->__load();
     }
 }

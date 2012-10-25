@@ -231,73 +231,84 @@ class ProxyFactory
         $methods = '';
 
         $methodNames = array();
-        /* @var $method \ReflectionMethod */
-        foreach ($class->getReflectionClass()->getMethods() as $method) {
+        $reflectionMethods = $class
+            ->getReflectionClass()
+            ->getMethods(\ReflectionMethod::IS_PUBLIC);
+        $skippedMethods = array(
+            '__sleep'   => true,
+            '__clone'   => true,
+            '__wakeup'  => true,
+            '__get'     => true,
+        );
+
+        foreach ($reflectionMethods as $method) {
+            $name = $method->getName();
+
             if (
                 $method->isConstructor()
-                || in_array(strtolower($method->getName()), array('__sleep', '__clone', '__wakeup', '__get'))
-                || isset($methodNames[$method->getName()])
+                || isset($skippedMethods[strtolower($name)])
+                || isset($methodNames[$name])
+                || $method->isFinal()
+                || $method->isStatic()
+                || ! $method->isPublic()
             ) {
                 continue;
             }
 
-            $methodNames[$method->getName()] = true;
+            $methodNames[$name] = true;
 
-            if ($method->isPublic() && ! $method->isFinal() && ! $method->isStatic()) {
-                $methods .= "\n" . '    public function ';
-                if ($method->returnsReference()) {
-                    $methods .= '&';
-                }
-                $methods .= $method->getName() . '(';
-                $firstParam = true;
-                $parameterString = $argumentString = '';
-                $parameters = array();
-
-                foreach ($method->getParameters() as $param) {
-                    if ($firstParam) {
-                        $firstParam = false;
-                    } else {
-                        $parameterString .= ', ';
-                        $argumentString  .= ', ';
-                    }
-
-                    // We need to pick the type hint class too
-                    if (($paramClass = $param->getClass()) !== null) {
-                        $parameterString .= '\\' . $paramClass->getName() . ' ';
-                    } else if ($param->isArray()) {
-                        $parameterString .= 'array ';
-                    }
-
-                    if ($param->isPassedByReference()) {
-                        $parameterString .= '&';
-                    }
-
-                    $parameters[] = '$' . $param->getName();
-                    $parameterString .= '$' . $param->getName();
-                    $argumentString  .= '$' . $param->getName();
-
-                    if ($param->isDefaultValueAvailable()) {
-                        $parameterString .= ' = ' . var_export($param->getDefaultValue(), true);
-                    }
-                }
-
-                $methods .= $parameterString . ')';
-                $methods .= "\n" . '    {' . "\n";
-                if ($this->isShortIdentifierGetter($method, $class)) {
-                    $identifier = lcfirst(substr($method->getName(), 3));
-                    $cast = in_array($class->getTypeOfField($identifier), array('integer', 'smallint')) ? '(int) ' : '';
-
-                    $methods .= '        if ($this->__isInitialized__ === false) {' . "\n";
-                    $methods .= '            return ' . $cast . '$this->' . $identifier . ';' . "\n";
-                    $methods .= '        }' . "\n";
-                }
-
-                // @todo can actually pack method parameters here via reflection
-                $methods .= '        $cb = $this->__initializer__;' . "\n";
-                $methods .= '        $cb($this, ' . var_export($method->getName(), true) . ', array(' . implode(', ', $parameters) . '));' . "\n";
-                $methods .= '        return parent::' . $method->getName() . '(' . $argumentString . ');';
-                $methods .= "\n" . '    }' . "\n";
+            $methods .= "\n" . '    public function ';
+            if ($method->returnsReference()) {
+                $methods .= '&';
             }
+            $methods .= $name . '(';
+            $firstParam = true;
+            $parameterString = $argumentString = '';
+            $parameters = array();
+
+            foreach ($method->getParameters() as $param) {
+                if ($firstParam) {
+                    $firstParam = false;
+                } else {
+                    $parameterString .= ', ';
+                    $argumentString  .= ', ';
+                }
+
+                // We need to pick the type hint class too
+                if (($paramClass = $param->getClass()) !== null) {
+                    $parameterString .= '\\' . $paramClass->getName() . ' ';
+                } else if ($param->isArray()) {
+                    $parameterString .= 'array ';
+                }
+
+                if ($param->isPassedByReference()) {
+                    $parameterString .= '&';
+                }
+
+                $parameters[] = '$' . $param->getName();
+                $parameterString .= '$' . $param->getName();
+                $argumentString  .= '$' . $param->getName();
+
+                if ($param->isDefaultValueAvailable()) {
+                    $parameterString .= ' = ' . var_export($param->getDefaultValue(), true);
+                }
+            }
+
+            $methods .= $parameterString . ')';
+            $methods .= "\n" . '    {' . "\n";
+            if ($this->isShortIdentifierGetter($method, $class)) {
+                $identifier = lcfirst(substr($name, 3));
+                $cast = in_array($class->getTypeOfField($identifier), array('integer', 'smallint')) ? '(int) ' : '';
+
+                $methods .= '        if ($this->__isInitialized__ === false) {' . "\n";
+                $methods .= '            return ' . $cast . '$this->' . $identifier . ';' . "\n";
+                $methods .= '        }' . "\n";
+            }
+
+            $methods .= '        $cb = $this->__initializer__;' . "\n";
+            $methods .= '        $cb($this, ' . var_export($name, true) . ', array(' . implode(', ', $parameters) . '));' . "\n";
+            $methods .= '        return parent::' . $name . '(' . $argumentString . ');';
+            $methods .= "\n" . '    }' . "\n";
         }
 
         return $methods;
@@ -338,6 +349,7 @@ class ProxyFactory
                 return true;
             }
         }
+
         return false;
     }
 
@@ -610,13 +622,12 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         };
 
         $this->__cloner__ = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
-            $proxy->__initializer__ = $proxy->__cloner__ = function(){};
-
             if ($proxy->__isInitialized__) {
                 return;
             }
 
             $proxy->__isInitialized__ = true;
+            $proxy->__setInitializer(function(){});
             $class = $entityPersister->getClassMetadata();
             $original = $entityPersister->load($identifier);
 
@@ -625,8 +636,12 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             }
 
             foreach ($class->getReflectionClass()->getProperties() as $reflProperty) {
-                $reflProperty->setAccessible(true);
-                $reflProperty->setValue($proxy, $reflProperty->getValue($original));
+                $propertyName = $reflProperty->getName();
+
+                if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
+                    $reflProperty->setAccessible(true);
+                    $reflProperty->setValue($proxy, $reflProperty->getValue($original));
+                }
             }
         };
     }
