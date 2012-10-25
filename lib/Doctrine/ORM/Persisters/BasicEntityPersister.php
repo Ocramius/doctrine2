@@ -935,7 +935,6 @@ class BasicEntityPersister
             $quotedJoinTable = $this->quoteStrategy->getJoinTableName($assoc, $sourceClass, $this->_platform);
 
             foreach ($assoc['joinTable']['joinColumns'] as $joinColumn) {
-                $relationKeyColumn  = $joinColumn['name'];
                 $sourceKeyColumn    = $joinColumn['referencedColumnName'];
                 $quotedKeyColumn    = $this->quoteStrategy->getJoinColumnName($joinColumn, $sourceClass, $this->_platform);
 
@@ -963,7 +962,6 @@ class BasicEntityPersister
 
             // TRICKY: since the association is inverted source and target are flipped
             foreach ($owningAssoc['joinTable']['inverseJoinColumns'] as $joinColumn) {
-                $relationKeyColumn  = $joinColumn['name'];
                 $sourceKeyColumn    = $joinColumn['referencedColumnName'];
                 $quotedKeyColumn    = $this->quoteStrategy->getJoinColumnName($joinColumn, $sourceClass, $this->_platform);
 

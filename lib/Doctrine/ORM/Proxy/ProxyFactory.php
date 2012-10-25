@@ -352,12 +352,12 @@ class ProxyFactory
         $sleepImpl = '';
 
         if ($class->getReflectionClass()->hasMethod('__sleep')) {
-            $sleepImpl .= "          \$publicProperties = array(" . $this->_generatePublicProps($class) . ");\n";
-            $sleepImpl .= "\$properties = array_merge(array('__isInitialized__'), parent::__sleep());\n\n";
+            $sleepImpl .= "\$lazyPublicProperties = array(" . $this->_generatePublicProps($class) . ");\n";
+            $sleepImpl .= "        \$properties = array_merge(array('__isInitialized__'), parent::__sleep());\n\n";
 
-            $sleepImpl .= "    if(\$this->__isInitialized__) {\n";
-            $sleepImpl .= "        \$properties = array_diff(\$properties, \$publicProperties);\n";
-            $sleepImpl .= "    }\n";
+            $sleepImpl .= "        if(\$this->__isInitialized__) {\n";
+            $sleepImpl .= "            \$properties = array_diff(\$properties, \$lazyPublicProperties);\n";
+            $sleepImpl .= "        }\n";
         } else {
             $allProperties = array('__isInitialized__');
 
@@ -366,8 +366,8 @@ class ProxyFactory
                 $allProperties[] = $prop->getName();
             }
 
-            $publicProperties = $this->_getLazyLoadedPublicProperties($class);
-            $protectedProperties = array_diff($allProperties, $publicProperties);
+            $lazyPublicProperties = $this->_getLazyLoadedPublicProperties($class);
+            $protectedProperties = array_diff($allProperties, $lazyPublicProperties);
 
             foreach ($allProperties as &$property) {
                 $property = var_export($property, true);
@@ -378,13 +378,13 @@ class ProxyFactory
             }
 
             $sleepImpl .= "if (\$this->__isInitialized__) {\n";
-            $sleepImpl .= "    \$properties = array(" . implode(', ', $allProperties) . ");\n";
-            $sleepImpl .= "} else {\n";
-            $sleepImpl .= "    \$properties = array(" . implode(', ', $protectedProperties) . ");\n";
-            $sleepImpl .= "}\n";
+            $sleepImpl .= "            \$properties = array(" . implode(', ', $allProperties) . ");\n";
+            $sleepImpl .= "        } else {\n";
+            $sleepImpl .= "            \$properties = array(" . implode(', ', $protectedProperties) . ");\n";
+            $sleepImpl .= "        }\n";
         }
 
-        $sleepImpl .= "\nreturn \$properties;";
+        $sleepImpl .= "\n        return \$properties;";
 
         return $sleepImpl;
     }
@@ -402,12 +402,12 @@ class ProxyFactory
 
         $unsetPublicProperties = array();
 
-        foreach ($this->_getLazyLoadedPublicProperties($class) as $persistedPublicProperty) {
-            $unsetPublicProperties[] = '$this->' . $persistedPublicProperty;
+        foreach ($this->_getLazyLoadedPublicProperties($class) as $lazyPublicProperty) {
+            $unsetPublicProperties[] = '$this->' . $lazyPublicProperty;
         }
 
         if (!empty($unsetPublicProperties)) {
-            $wakeupImpl .= "\n        if (!\$this->__isInitialized__) {";
+            $wakeupImpl .= "\n\n        if (!\$this->__isInitialized__) {";
             $wakeupImpl .= "\n            unset(" . implode(', ', $unsetPublicProperties) . ");";
             $wakeupImpl .= "\n        }";
         }
@@ -421,13 +421,13 @@ class ProxyFactory
 
     private function _generatePublicProps(ClassMetadata $class)
     {
-        $publicProperties = array();
+        $lazyPublicProperties = array();
 
-        foreach ($this->_getLazyLoadedPublicProperties($class) as $persistedPublicProperty) {
-            $publicProperties[] = var_export($persistedPublicProperty, true) . ' => true';
+        foreach ($this->_getLazyLoadedPublicProperties($class) as $lazyPublicProperty) {
+            $lazyPublicProperties[] = var_export($lazyPublicProperty, true) . ' => true';
         }
 
-        return implode(', ', $publicProperties);
+        return implode(', ', $lazyPublicProperties);
     }
 
     /**
@@ -442,12 +442,12 @@ class ProxyFactory
         $toStore = array();
         $lazyLoadedProperties = $this->_getLazyLoadedPublicProperties($class);
 
-        foreach ($lazyLoadedProperties as $persistedPublicProperty) {
-            $toStore[] = var_export($persistedPublicProperty, true) . ' => $this->' . $persistedPublicProperty;
-            $toUnset[] = '$this->' . $persistedPublicProperty;
+        foreach ($lazyLoadedProperties as $lazyPublicProperty) {
+            $toStore[] = var_export($lazyPublicProperty, true) . ' => $this->' . $lazyPublicProperty;
+            $toUnset[] = '$this->' . $lazyPublicProperty;
         }
 
-        $ctorImpl = '$publicProperties = array(' . $this->_generatePublicProps($class) . ');' . "\n";
+        $ctorImpl = '$lazyPublicProperties = array(' . $this->_generatePublicProps($class) . ');' . "\n";
         $ctorImpl .= '        $originalValues = array(' . implode(', ', $toStore) . ');' . "\n";
         $ctorImpl .= empty($toUnset) ? '' : '        unset(' . implode(', ', $toUnset) . ');' . "\n";
 
@@ -467,17 +467,12 @@ class ProxyFactory
     private function _generateMagicGet(ClassMetadata $class)
     {
         $magicGet = '';
+        $lazyPublicProperties = $this->_getLazyLoadedPublicProperties($class);
 
-        $publicProperties = array();
+        if (!empty($lazyPublicProperties)) {
+            $magicGet .= "\n        \$lazyPublicProperties = array(" . $this->_generatePublicProps($class) . ");";
 
-        foreach ($class->getReflectionClass()->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
-            $publicProperties[$publicProperty->getName()] = true;
-        }
-
-        if (!empty($publicProperties)) {
-            $magicGet .= "\n          \$publicProperties = array(" . $this->_generatePublicProps($class) . ");";
-
-            $magicGet .= "\n\n        if (isset(\$publicProperties[\$name])) {";
+            $magicGet .= "\n\n        if (isset(\$lazyPublicProperties[\$name])) {";
 
             $magicGet .= "\n            \$cb = \$this->__initializer__;";
             $magicGet .= "\n            \$cb(\$this, '__get', array(\$name));";
@@ -492,7 +487,11 @@ class ProxyFactory
             $magicGet .= "\n        throw new \\BadMethodCallException('Undefined property \"\$name\"');";
         }
 
-        return $magicGet;
+        if (!empty($magicGet)) {
+            return "public function __get(\$name)\n    {\n" . $magicGet . "    }\n";
+        }
+
+        return '';
     }
 
     /**
@@ -505,20 +504,20 @@ class ProxyFactory
     {
         $magicSet = '';
 
-        $publicProperties = array();
+        $lazyPublicProperties = array();
 
         foreach ($class->getReflectionClass()->getProperties(\ReflectionProperty::IS_PUBLIC) as $publicProperty) {
-            $publicProperties[$publicProperty->getName()] = true;
+            $lazyPublicProperties[$publicProperty->getName()] = true;
         }
 
-        if (!empty($publicProperties) || $class->getReflectionClass()->hasMethod('__set')) {
+        if (!empty($lazyPublicProperties) || $class->getReflectionClass()->hasMethod('__set')) {
             $magicSet .= "public function __set(\$name, \$value)\n";
             $magicSet .= "    {";
 
-            if (!empty($publicProperties)) {
-                $magicSet .= "\n          \$publicProperties = array(" . $this->_generatePublicProps($class) . ");";
+            if (!empty($lazyPublicProperties)) {
+                $magicSet .= "\n          \$lazyPublicProperties = array(" . $this->_generatePublicProps($class) . ");";
 
-                $magicSet .= "\n        if (isset(\$publicProperties[\$name])) {";
+                $magicSet .= "\n        if (isset(\$lazyPublicProperties[\$name])) {";
                 $magicSet .= "\n            \$cb = \$this->__initializer__;";
                 $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
                 $magicSet .= "\n            \$this->\$name = \$value;";
@@ -586,14 +585,14 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function __construct($entityPersister, $identifier)
     {
         <ctorImpl>
-        $this->__initializer__ = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier, $originalValues, $publicProperties) {
+        $this->__initializer__ = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier, $originalValues, $lazyPublicProperties) {
             $proxy->__initializer__ = $proxy->__cloner__ = function(){};
 
             if ($proxy->__isInitialized__) {
                 return;
             }
 
-            foreach ($publicProperties as $propertyName => $property) {
+            foreach ($lazyPublicProperties as $propertyName => $property) {
                 if (!isset($proxy->$propertyName)) {
                     $proxy->$propertyName = isset($originalValues[$propertyName]) ? $originalValues[$propertyName] : null;
                 }
@@ -660,10 +659,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         $this->__initializer__ = $initializer;
     }
 
-    public function __get($name)
-    {
-        <magicGet>
-    }
+    <magicGet>
 
     /*<magicSet>*/
 

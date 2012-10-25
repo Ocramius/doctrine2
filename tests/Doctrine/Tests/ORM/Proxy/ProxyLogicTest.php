@@ -70,10 +70,6 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             ->will($this->returnValue(array('publicIdentifierField', 'protectedIdentifierField')));
         $metadata
             ->expects($this->any())
-            ->method('hasField')
-            ->will($this->returnValue(true));
-        $metadata
-            ->expects($this->any())
             ->method('getIdentifierFieldNames')
             ->will($this->returnValue(array('publicIdentifierField', 'protectedIdentifierField')));
         $metadata
@@ -269,13 +265,31 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
     public function testCloningCallsCloner()
     {
         $cb = $this->getMock('stdClass', array('cb'));
-        $cb->expects($this->once())->method('cb')->with($this->lazyObject);
+        $cb->expects($this->once())->method('cb');
+        $lazyObject = $this->lazyObject;
+        $test = $this;
 
-        $this->lazyObject->__cloner__ = function($proxy) use ($cb) {
-            $cb->cb($proxy);
+        $this->lazyObject->__cloner__ = function(LazyLoadableObjectProxy $proxy) use ($cb, $lazyObject, $test) {
+            $this->assertNotSame($proxy, $lazyObject, 'a clone of the lazy object is passed to the cloner callback');
+            $cb->cb();
+            $proxy->publicAssociation = 'loadedAssociation';
         };
 
         $cloned = clone $this->lazyObject;
+        $this->assertSame('loadedAssociation', $cloned->publicAssociation);
+        $this->assertNotSame($cloned, $lazyObject, 'a clone of the lazy object is retrieved');
+    }
+
+    public function testFetchingTransientPropertiesWillNotTriggerLazyLoading()
+    {
+        $cb = $this->getMock('stdClass', array('cb'));
+        $cb->expects($this->never())->method('cb');
+
+        $this->lazyObject->__setInitializer(function() use ($cb) {
+            $cb->cb();
+        });
+
+        $this->assertSame('publicTransientFieldValue', $this->lazyObject->publicTransientField);
     }
 
     public function testCloning()
@@ -289,11 +303,6 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
     }
 
     public function testCloningWithPersister()
-    {
-        $this->markTestIncomplete('TBD');
-    }
-
-    public function testTransientProperties()
     {
         $this->markTestIncomplete('TBD');
     }
