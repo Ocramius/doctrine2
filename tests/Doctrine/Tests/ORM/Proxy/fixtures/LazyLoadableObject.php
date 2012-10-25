@@ -5,25 +5,34 @@
  */
 class LazyLoadableObject
 {
-    public $firstIdentifierField;
+    public $publicIdentifierField;
 
-    protected $secondIdentifierField;
+    protected $protectedIdentifierField;
 
-    public $publicTransitientField          = 'publicTransitientFieldValue';
+    public $publicTransientField            = 'publicTransientFieldValue';
+
+    protected $protectedTransientField      = 'protectedTransientFieldValue';
 
     public $publicPersistentField           = 'publicPersistentFieldValue';
 
-    protected $protectedTransitientField    = 'protectedTransitientFieldValue';
-
     protected $protectedPersistentField     = 'protectedPersistentFieldValue';
 
-    public function getSecondIdentifierField()
+    public $publicAssociation               = 'publicAssociationValue';
+
+    protected $protectedAssociation         = 'protectedAssociationValue';
+
+    public function getProtectedIdentifierField()
     {
-        return $this->secondIdentifierField;
+        return $this->protectedIdentifierField;
     }
 
     public function testInitializationTriggeringMethod()
     {
         return 'testInitializationTriggeringMethod';
+    }
+
+    public function getProtectedAssociation()
+    {
+        return $this->protectedAssociation;
     }
 }

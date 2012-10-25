@@ -20,7 +20,7 @@
 namespace Doctrine\ORM\Proxy;
 
 use Doctrine\ORM\EntityManager;
-use Doctrine\ORM\Mapping\ClassMetadata;
+use Doctrine\Common\Persistence\Mapping\ClassMetadata;
 use Doctrine\Common\Util\ClassUtils;
 
 /**
@@ -131,11 +131,11 @@ class ProxyFactory
 
         foreach ($classes as $class) {
             /* @var $class ClassMetadata */
-            if ($class->isMappedSuperclass || $class->reflClass->isAbstract()) {
+            if ($class->isMappedSuperclass || $class->getReflectionClass()->isAbstract()) {
                 continue;
             }
 
-            $proxyFileName = $this->getProxyFileName($class->name, $proxyDir);
+            $proxyFileName = $this->getProxyFileName($class->getName(), $proxyDir);
 
             $this->_generateProxyClass($class, $proxyFileName, self::$_proxyClassTemplate);
             $num++;
