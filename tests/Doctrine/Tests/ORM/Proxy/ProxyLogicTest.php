@@ -46,7 +46,6 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             __DIR__ . '/generated',
             __NAMESPACE__ . 'Proxy'
         );
-        $this->persisterMock = $this->getMock('Doctrine\ORM\Persisters\BasicEntityPersister', array(), array(), '', false);
 
         // mocking a lot of classmetadata details. This helps ensuring that we won't have more requirements than needed
         // in future
@@ -111,13 +110,17 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
 
                 return isset($identifiers[$field]);
             }));
-
         // @todo to be removed, since it is not part of the interface
         $metadata->isMappedSuperclass = false;
-
         $this->lazyLoadableObjectMetadata = $metadata;
-        $this->proxyFactory->generateProxyClasses(array($metadata));
 
+        $this->persisterMock = $this->getMock('Doctrine\ORM\Persisters\BasicEntityPersister', array(), array(), '', false);
+        $this->persisterMock
+            ->expects($this->any())
+            ->method('getClassMetadata')
+            ->will($this->returnValue($this->lazyLoadableObjectMetadata));
+
+        $this->proxyFactory->generateProxyClasses(array($metadata));
         require_once __DIR__ . '/generated/__CG__LazyLoadableObject.php';
 
         $this->lazyObject = $proxy = new LazyLoadableObjectProxy(
@@ -127,6 +130,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
                 'protectedIdentifierField' => 'protectedIdentifierFieldValue',
             )
         );
+        $this->assertFalse($this->lazyObject->__isInitialized());
     }
 
     public function testFetchingPublicIdentifierDoesNotCauseLazyLoading()
@@ -259,5 +263,37 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $this->lazyObject->non_existing_property;
 
         $this->markTestIncomplete('better exception needed - define in doctrine/common');
+    }
+
+    public function testCloningCallsCloner()
+    {
+        $cb = $this->getMock('stdClass', array('cb'));
+        $cb->expects($this->once())->method('cb')->with($this->lazyObject);
+
+        $this->lazyObject->__cloner__ = function($proxy) use ($cb) {
+            $cb->cb($proxy);
+        };
+
+        $cloned = clone $this->lazyObject;
+    }
+
+    public function testCloning()
+    {
+        $this->markTestIncomplete('TBD');
+    }
+
+    public function testLoadingWithPersister()
+    {
+        $this->markTestIncomplete('TBD');
+    }
+
+    public function testCloningWithPersister()
+    {
+        $this->markTestIncomplete('TBD');
+    }
+
+    public function testTransientProperties()
+    {
+        $this->markTestIncomplete('TBD');
     }
 }
