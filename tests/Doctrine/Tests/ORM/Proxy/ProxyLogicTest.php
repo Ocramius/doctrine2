@@ -41,6 +41,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
 
     public function setUp()
     {
+        // @todo move proxy generation to static::setUpBeforeClass
         $this->proxyFactory = new ProxyFactory(
             $this->getMock('Doctrine\ORM\EntityManager', array(), array(), '', false),
             __DIR__ . '/generated',
