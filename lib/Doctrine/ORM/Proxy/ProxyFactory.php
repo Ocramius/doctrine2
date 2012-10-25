@@ -625,8 +625,9 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
                 throw new \Doctrine\ORM\EntityNotFoundException();
             }
 
-            foreach ($class->getReflectionClass()->getProperties() as $name => $reflProperty) {
-                $reflProperty->setValue($proxy, $class->getFieldValue($original, $name));
+            foreach ($class->getReflectionClass()->getProperties() as $reflProperty) {
+                $reflProperty->setAccessible(true);
+                $reflProperty->setValue($proxy, $reflProperty->getValue($original));
             }
         };
     }
