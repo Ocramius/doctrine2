@@ -111,6 +111,8 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
 
                 return isset($identifiers[$field]);
             }));
+
+        // @todo to be removed, since it is not part of the interface
         $metadata->isMappedSuperclass = false;
 
         $this->lazyLoadableObjectMetadata = $metadata;
@@ -234,13 +236,14 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             $test->assertSame('__get', $method, '__get is used to trigger lazy loading');
             $test->assertSame(array('publicPersistentField'), $parameters, 'field "publicPersistentField" is passed to __get');
             $proxy->publicPersistentField = 'loadedValue';
-            // @todo this actually fakes the loader logic by assuming the loader will set this value - not correct?
             $proxy->publicAssociation = 'publicAssociationValue';
             $cb->cb();
         });
 
         $this->assertSame('loadedValue', $this->lazyObject->publicPersistentField);
         $this->assertSame('publicAssociationValue', $this->lazyObject->publicAssociation);
+
+        $this->markTestIncomplete('this actually fakes the loader logic by assuming the loader will set this value - not correct?');
     }
 
     public function testErrorWhenAccessingNonExistentPublicProperties()
@@ -251,9 +254,10 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $this->lazyObject->__setInitializer(function() use ($cb) {
             $cb->cb();
         });
-        // @todo better exception needed - define in doctrine/common
         $this->setExpectedException('BadMethodCallException');
 
         $this->lazyObject->non_existing_property;
+
+        $this->markTestIncomplete('better exception needed - define in doctrine/common');
     }
 }
