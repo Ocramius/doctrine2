@@ -482,4 +482,9 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $protectedAssociationField->setAccessible(true);
         $this->assertSame('protectedAssociationValue', $protectedAssociationField->getValue($unserialized), 'associations are kept');
     }
+
+    public function settingPublicLazyPropertyTriggersLazyLoading()
+    {
+        $this->markTestSkipped('Not yet supported');
+    }
 }
