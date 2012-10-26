@@ -280,7 +280,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $test = $this;
 
         $this->lazyObject->__cloner__ = function(LazyLoadableObjectProxy $proxy) use ($cb, $lazyObject, $test) {
-            $this->assertNotSame($proxy, $lazyObject, 'a clone of the lazy object is passed to the cloner callback');
+            $test->assertNotSame($proxy, $lazyObject, 'a clone of the lazy object is passed to the cloner callback');
             $cb->cb();
             $proxy->publicAssociation = 'loadedAssociation';
         };
@@ -323,10 +323,11 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
     {
         $cb = $this->getMock('stdClass', array('cb'));
         $cb->expects($this->once())->method('cb')->with($this->lazyObject);
+        $test = $this;
 
-        $this->lazyObject->__setInitializer(function($proxy, $method, $parameters) use ($cb) {
-            $this->assertSame('__load', $method);
-            $this->assertSame(array(), $parameters);
+        $this->lazyObject->__setInitializer(function($proxy, $method, $parameters) use ($cb, $test) {
+            $test->assertSame('__load', $method);
+            $test->assertSame(array(), $parameters);
             $cb->cb($proxy);
         });
 
@@ -340,12 +341,12 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             ->expects($this->once())
             ->method('load')
             ->with(
-            array(
-                'publicIdentifierField' => 'publicIdentifierFieldValue',
-                'protectedIdentifierField' => 'protectedIdentifierFieldValue',
-            ),
-            $this->lazyObject
-        )
+                array(
+                    'publicIdentifierField' => 'publicIdentifierFieldValue',
+                    'protectedIdentifierField' => 'protectedIdentifierFieldValue',
+                ),
+                $this->lazyObject
+            )
             ->will($this->returnCallback(function($id, LazyLoadableObjectProxy $lazyObject) {
             // setting a value to verify that the persister can actually set something in the object
             $lazyObject->publicAssociation = $id['publicIdentifierField'] . '-test';
@@ -354,6 +355,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
 
         $this->lazyObject->__load();
         $this->lazyObject->__load();
+        $this->assertSame('publicIdentifierFieldValue-test', $this->lazyObject->publicAssociation);
     }
 
     public function testFailedLoadingWillThrowOrmException()
