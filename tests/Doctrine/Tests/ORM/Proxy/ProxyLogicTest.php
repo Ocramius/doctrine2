@@ -41,7 +41,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
     /**
      * @var bool flag used to avoid re-generating proxy classes at every test
      */
-    protected $generated = false;
+    private static $generated = false;
 
     /**
      * {@inheritDoc}
@@ -124,10 +124,10 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             ->method('getClassMetadata')
             ->will($this->returnValue($this->lazyLoadableObjectMetadata));
 
-        if (!$this->generated) {
+        if (!self::$generated) {
             $this->proxyFactory->generateProxyClasses(array($metadata));
             require_once __DIR__ . '/generated/__CG__LazyLoadableObject.php';
-            $this->generated = true;
+            self::$generated = true;
         }
 
         $this->lazyObject = $proxy = new LazyLoadableObjectProxy(
