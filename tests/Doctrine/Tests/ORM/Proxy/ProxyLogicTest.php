@@ -402,4 +402,84 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $firstClone->__load();
         $secondClone->__load();
     }
+
+    public function testNotInitializedProxyUnserialization()
+    {
+        $cb = $this->getMock('stdClass', array('cb'));
+        $cb->expects($this->never())->method('cb');
+        $this->lazyObject->__setInitializer(function() use ($cb) {
+            $cb->cb();
+        });
+
+        $serialized = serialize($this->lazyObject);
+        /* @var $unserialized LazyLoadableObjectProxy */
+        $unserialized = unserialize($serialized);
+        $reflClass = $this->lazyLoadableObjectMetadata->getReflectionClass();
+
+        $this->assertFalse($unserialized->__isInitialized(), 'serialization didn\'t cause intialization');
+
+        // Checking identifiers
+        $this->assertSame('publicIdentifierFieldValue', $unserialized->publicIdentifierField, 'identifiers are kept');
+        $protectedIdentifierField = $reflClass->getProperty('protectedIdentifierField');
+        $protectedIdentifierField->setAccessible(true);
+        $this->assertSame('protectedIdentifierFieldValue', $protectedIdentifierField->getValue($unserialized), 'identifiers are kept');
+
+        // Checking transient fields
+        $this->assertSame('publicTransientFieldValue', $unserialized->publicTransientField, 'transient fields are kept');
+        $protectedTransientField = $reflClass->getProperty('protectedTransientField');
+        $protectedTransientField->setAccessible(true);
+        $this->assertSame('protectedTransientFieldValue', $protectedTransientField->getValue($unserialized), 'transient fields are kept');
+
+        $this->markTestIncomplete('Should the end user be responsible of setting a new initializer? Currently, calling properties that were unset causes trouble');
+
+        // Checking persistent fields
+        $this->assertSame('publicPersistentFieldValue', $unserialized->publicPersistentField, 'persistent fields are kept');
+        $protectedPersistentField = $reflClass->getProperty('protectedPersistentField');
+        $protectedPersistentField->setAccessible(true);
+        $this->assertSame('protectedPersistentFieldValue', $protectedPersistentField->getValue($unserialized), 'persistent fields are kept');
+
+        // Checking associations
+        $this->assertSame('publicAssociationValue', $unserialized->publicAssociation, 'associations are kept');
+        $protectedAssociationField = $reflClass->getProperty('protectedAssociation');
+        $protectedAssociationField->setAccessible(true);
+        $this->assertSame('protectedAssociationValue', $protectedAssociationField->getValue($unserialized), 'associations are kept');
+    }
+
+    public function testInitializedProxyUnserialization()
+    {
+        // persister will retrieve the lazy object itself, so that we don't have to re-define all field values
+        $this->persisterMock->expects($this->once())->method('load')->will($this->returnValue($this->lazyObject));
+        $this->lazyObject->__load();
+
+        $serialized = serialize($this->lazyObject);
+        /* @var $unserialized LazyLoadableObjectProxy */
+        $unserialized = unserialize($serialized);
+        $reflClass = $this->lazyLoadableObjectMetadata->getReflectionClass();
+
+        $this->assertTrue($unserialized->__isInitialized(), 'serialization didn\'t cause intialization');
+
+        // Checking transient fields
+        $this->assertSame('publicTransientFieldValue', $unserialized->publicTransientField, 'transient fields are kept');
+        $protectedTransientField = $reflClass->getProperty('protectedTransientField');
+        $protectedTransientField->setAccessible(true);
+        $this->assertSame('protectedTransientFieldValue', $protectedTransientField->getValue($unserialized), 'transient fields are kept');
+
+        // Checking persistent fields
+        $this->assertSame('publicPersistentFieldValue', $unserialized->publicPersistentField, 'persistent fields are kept');
+        $protectedPersistentField = $reflClass->getProperty('protectedPersistentField');
+        $protectedPersistentField->setAccessible(true);
+        $this->assertSame('protectedPersistentFieldValue', $protectedPersistentField->getValue($unserialized), 'persistent fields are kept');
+
+        // Checking identifiers
+        $this->assertSame('publicIdentifierFieldValue', $unserialized->publicIdentifierField, 'identifiers are kept');
+        $protectedIdentifierField = $reflClass->getProperty('protectedIdentifierField');
+        $protectedIdentifierField->setAccessible(true);
+        $this->assertSame('protectedIdentifierFieldValue', $protectedIdentifierField->getValue($unserialized), 'identifiers are kept');
+
+        // Checking associations
+        $this->assertSame('publicAssociationValue', $unserialized->publicAssociation, 'associations are kept');
+        $protectedAssociationField = $reflClass->getProperty('protectedAssociation');
+        $protectedAssociationField->setAccessible(true);
+        $this->assertSame('protectedAssociationValue', $protectedAssociationField->getValue($unserialized), 'associations are kept');
+    }
 }
