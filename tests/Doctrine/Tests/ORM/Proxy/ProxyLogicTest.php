@@ -253,8 +253,6 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
 
         $this->assertSame('loadedValue', $this->lazyObject->publicPersistentField);
         $this->assertSame('publicAssociationValue', $this->lazyObject->publicAssociation);
-
-        $this->markTestIncomplete('this actually fakes the loader logic by assuming the loader will set this value - not correct?');
     }
 
     public function testErrorWhenAccessingNonExistentPublicProperties()
@@ -432,8 +430,6 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $protectedTransientField->setAccessible(true);
         $this->assertSame('protectedTransientFieldValue', $protectedTransientField->getValue($unserialized), 'transient fields are kept');
 
-        $this->markTestIncomplete('Should the end user be responsible of setting a new initializer? Currently, calling properties that were unset causes trouble');
-
         // Checking persistent fields
         $this->assertSame('publicPersistentFieldValue', $unserialized->publicPersistentField, 'persistent fields are kept');
         $protectedPersistentField = $reflClass->getProperty('protectedPersistentField');
@@ -485,7 +481,7 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $this->assertSame('protectedAssociationValue', $protectedAssociationField->getValue($unserialized), 'associations are kept');
     }
 
-    public function settingPublicLazyPropertyTriggersLazyLoading()
+    public function testSettingPublicLazyPropertyTriggersLazyLoading()
     {
         $this->markTestSkipped('Not yet supported');
     }

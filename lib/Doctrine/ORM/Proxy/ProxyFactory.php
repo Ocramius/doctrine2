@@ -378,7 +378,7 @@ class ProxyFactory
                 $allProperties[] = $prop->getName();
             }
 
-            $lazyPublicProperties = $this->_getLazyLoadedPublicProperties($class);
+            $lazyPublicProperties = array_keys($this->_getLazyLoadedPublicProperties($class));
             $protectedProperties = array_diff($allProperties, $lazyPublicProperties);
 
             foreach ($allProperties as &$property) {
@@ -409,14 +409,25 @@ class ProxyFactory
      */
     private function _generateWakeup(ClassMetadata $class)
     {
-        $wakeupImpl = "\$this->__initializer__ = function(){};\n";
-        $wakeupImpl .= "        \$this->__cloner__      = function(){};";
-
+        $initializedProperties = array();
         $unsetPublicProperties = array();
 
-        foreach ($this->_getLazyLoadedPublicProperties($class) as $lazyPublicProperty) {
+        foreach ($this->_getLazyLoadedPublicProperties($class) as $lazyPublicProperty => $defaultValue) {
             $unsetPublicProperties[] = '$this->' . $lazyPublicProperty;
+            $initializedProperties[] = var_export($lazyPublicProperty, true) . ' => ' . var_export($defaultValue, true);
         }
+
+        $wakeupImpl = "\$this->__initializer__ = function(\$proxy){\n";
+        $wakeupImpl .= "            \$proxy->__initializer__ = \$proxy->__cloner__ = function(){};\n";
+        $wakeupImpl .= "            \$lazyPublicProperties = array(" . implode(', ', $initializedProperties) . ");\n";
+        $wakeupImpl .= "            \$existingProperties = get_object_vars(\$proxy);\n\n";
+        $wakeupImpl .= "            foreach (\$lazyPublicProperties as \$lazyPublicProperty => \$defaultValue) {\n";
+        $wakeupImpl .= "                if (!array_key_exists(\$lazyPublicProperty, \$existingProperties)) {\n";
+        $wakeupImpl .= "                    \$proxy->\$lazyPublicProperty = \$defaultValue;\n";
+        $wakeupImpl .= "                }\n";
+        $wakeupImpl .= "            }\n";
+        $wakeupImpl .= "        };\n";
+        $wakeupImpl .= "        \$this->__cloner__      = function(){};";
 
         if (!empty($unsetPublicProperties)) {
             $wakeupImpl .= "\n\n        if (!\$this->__isInitialized__) {";
@@ -435,7 +446,7 @@ class ProxyFactory
     {
         $lazyPublicProperties = array();
 
-        foreach ($this->_getLazyLoadedPublicProperties($class) as $lazyPublicProperty) {
+        foreach (array_keys($this->_getLazyLoadedPublicProperties($class)) as $lazyPublicProperty) {
             $lazyPublicProperties[] = var_export($lazyPublicProperty, true) . ' => true';
         }
 
@@ -452,7 +463,7 @@ class ProxyFactory
     {
         $toUnset = array();
         $toStore = array();
-        $lazyLoadedProperties = $this->_getLazyLoadedPublicProperties($class);
+        $lazyLoadedProperties = array_keys($this->_getLazyLoadedPublicProperties($class));
 
         foreach ($lazyLoadedProperties as $lazyPublicProperty) {
             $toStore[] = var_export($lazyPublicProperty, true) . ' => $this->' . $lazyPublicProperty;
@@ -479,16 +490,13 @@ class ProxyFactory
     private function _generateMagicGet(ClassMetadata $class)
     {
         $magicGet = '';
-        $lazyPublicProperties = $this->_getLazyLoadedPublicProperties($class);
+        $lazyPublicProperties = array_keys($this->_getLazyLoadedPublicProperties($class));
 
         if (!empty($lazyPublicProperties)) {
             $magicGet .= "\n        \$lazyPublicProperties = array(" . $this->_generatePublicProps($class) . ");";
-
             $magicGet .= "\n\n        if (isset(\$lazyPublicProperties[\$name])) {";
-
             $magicGet .= "\n            \$cb = \$this->__initializer__;";
             $magicGet .= "\n            \$cb(\$this, '__get', array(\$name));";
-
             $magicGet .= "\n\n            return \$this->\$name;";
             $magicGet .= "\n        }\n";
         }
@@ -554,13 +562,14 @@ class ProxyFactory
 
     private function _getLazyLoadedPublicProperties(ClassMetadata $class)
     {
+        $defaultProperties = $class->getReflectionClass()->getDefaultProperties();
         $properties = array();
 
         foreach ($class->getReflectionClass()->getProperties(\ReflectionProperty::IS_PUBLIC) as $property) {
             $name = $property->getName();
 
             if (($class->hasField($name) || $class->hasAssociation($name)) && !$class->isIdentifier($name)) {
-                $properties[] = $name;
+                $properties[$name] = $defaultProperties[$name];
             }
         }
 
