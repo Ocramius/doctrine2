@@ -602,7 +602,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         $placeholders = array();
 
         foreach ($this->placeholders as $name => $placeholder) {
-            $placeholders[$name] = is_callable($placeholder) ? $placeholder($class) : $placeholder;
+            $placeholders[$name] = is_callable($placeholder) ? call_user_func($placeholder, $class) : $placeholder;
         }
 
         $fileName = $fileName ?: $this->getProxyFileName($class->getName());
