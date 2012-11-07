@@ -321,7 +321,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function generateLazyLoadedPublicPropertiesDefaultValues(ClassMetadata $class)
     {
         $lazyPublicProperties = $this->getLazyLoadedPublicProperties($class);
-        $values = [];
+        $values = array();
 
         foreach ($lazyPublicProperties as $key => $value) {
             $values[] = var_export($key, true) . ' => ' . var_export($value, true);
