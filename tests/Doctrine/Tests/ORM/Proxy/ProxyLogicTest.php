@@ -481,6 +481,19 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
         $this->assertSame('protectedAssociationValue', $protectedAssociationField->getValue($unserialized), 'associations are kept');
     }
 
+    public function testInitializationRestoresDefaultPublicLazyLoadedFieldValues()
+    {
+        // setting noop persister
+        $this
+            ->persisterMock
+            ->expects($this->once())
+            ->method('load')
+            ->will($this->returnValue($this->lazyObject));
+
+        $this->assertSame('publicPersistentFieldValue', $this->lazyObject->publicPersistentField, 'Persistent field is restored to default value');
+        $this->assertSame('publicAssociationValue', $this->lazyObject->publicAssociation, 'Association is restored to default value');
+    }
+
     public function testSettingPublicLazyPropertyTriggersLazyLoading()
     {
         $this->markTestSkipped('Not yet supported');
