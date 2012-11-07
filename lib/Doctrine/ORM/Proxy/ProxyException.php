@@ -41,6 +41,10 @@ class ProxyException extends \Doctrine\ORM\ORMException {
         return new self("You must configure a proxy namespace. See docs for details");
     }
 
+    public static function invalidPlaceholder($name) {
+        return new self("Provided placeholder for '$name' must be either a string or a valid callable");
+    }
+
     public static function notProxyClass($className, $proxyNamespace)
     {
         return new self(sprintf(
