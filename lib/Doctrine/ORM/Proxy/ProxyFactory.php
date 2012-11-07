@@ -21,7 +21,8 @@ namespace Doctrine\ORM\Proxy;
 
 use Doctrine\ORM\EntityManager;
 use Doctrine\Common\Util\ClassUtils;
-use Doctrine\Common\Persistence\Proxy;
+use Doctrine\Common\Proxy\Proxy;
+use Doctrine\Common\Proxy\ProxyGenerator;
 
 /**
  * This factory is used to create proxy objects for entities at runtime.
@@ -206,6 +207,7 @@ class ProxyFactory
     {
         if (null === $this->proxyGenerator) {
             $this->proxyGenerator = new ProxyGenerator($this->proxyDir, $this->proxyNs);
+            $this->proxyGenerator->setPlaceholder('<baseProxyInterface>', 'Doctrine\ORM\Proxy\Proxy');
         }
 
         return $this->proxyGenerator;

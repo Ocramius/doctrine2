@@ -3,7 +3,7 @@
 namespace Doctrine\Tests\ORM\Proxy;
 
 use Doctrine\ORM\Proxy\ProxyFactory;
-use Doctrine\ORM\Proxy\ProxyGenerator;
+use Doctrine\Common\Proxy\ProxyGenerator;
 use Doctrine\Tests\Mocks\ConnectionMock;
 use Doctrine\Tests\Mocks\EntityManagerMock;
 use Doctrine\Tests\Mocks\UnitOfWorkMock;
@@ -167,19 +167,19 @@ class ProxyClassGeneratorTest extends \Doctrine\Tests\OrmTestCase
 
     public function testNoConfigDirThrowsException()
     {
-        $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
+        $this->setExpectedException('Doctrine\Common\Proxy\ProxyException');
         new ProxyGenerator(null, null);
     }
 
     public function testNoNamespaceThrowsException()
     {
-        $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
+        $this->setExpectedException('Doctrine\Common\Proxy\ProxyException');
         new ProxyGenerator(__DIR__ . '/generated', null);
     }
 
     public function testInvalidPlaceholderThrowsException()
     {
-        $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
+        $this->setExpectedException('Doctrine\Common\Proxy\ProxyException');
         $generator = new ProxyGenerator(__DIR__ . '/generated', 'SomeNamespace');
         $generator->setPlaceholder('<somePlaceholder>', array());
     }
