@@ -3,14 +3,11 @@
 namespace Doctrine\Tests\ORM\Proxy;
 
 use Doctrine\ORM\Proxy\ProxyFactory;
+use Doctrine\ORM\Proxy\ProxyGenerator;
 use Doctrine\Tests\Mocks\ConnectionMock;
 use Doctrine\Tests\Mocks\EntityManagerMock;
 use Doctrine\Tests\Mocks\UnitOfWorkMock;
-use Doctrine\Tests\Models\ECommerce\ECommerceCart;
-use Doctrine\Tests\Models\ECommerce\ECommerceCustomer;
 use Doctrine\Tests\Models\ECommerce\ECommerceFeature;
-use Doctrine\Tests\Models\ECommerce\ECommerceProduct;
-use Doctrine\Tests\Models\ECommerce\ECommerceShipping;
 
 require_once __DIR__ . '/../../TestInit.php';
 
@@ -84,10 +81,9 @@ class ProxyClassGeneratorTest extends \Doctrine\Tests\OrmTestCase
 
     public function testReferenceProxyRespectsMethodsParametersTypeHinting()
     {
-        $proxyClass = 'Proxies\DoctrineTestsModelsECommerceECommerceFeatureProxy';
         $persister = $this->_getMockPersister();
         $this->_uowMock->setEntityPersister('Doctrine\Tests\Models\ECommerce\ECommerceFeature', $persister);
-        $proxy = $this->_proxyFactory->getProxy('Doctrine\Tests\Models\ECommerce\ECommerceFeature', null);
+        $proxy = $this->_proxyFactory->getProxy('Doctrine\Tests\Models\ECommerce\ECommerceFeature', array('id' => null));
 
         $method = new \ReflectionMethod(get_class($proxy), 'setProduct');
         $params = $method->getParameters();
@@ -100,7 +96,7 @@ class ProxyClassGeneratorTest extends \Doctrine\Tests\OrmTestCase
      * Test that the proxy behaves in regard to methods like &foo() correctly
      */
     public function testProxyRespectsMethodsWhichReturnValuesByReference() {
-        $proxy = $this->_proxyFactory->getProxy('Doctrine\Tests\Models\Forum\ForumEntry', null);
+        $proxy = $this->_proxyFactory->getProxy('Doctrine\Tests\Models\Forum\ForumEntry', array('id' => null));
         $method = new \ReflectionMethod(get_class($proxy), 'getTopicByReference');
 
         $this->assertTrue($method->returnsReference());
@@ -169,16 +165,23 @@ class ProxyClassGeneratorTest extends \Doctrine\Tests\OrmTestCase
         $this->assertEquals(0, $num, "No proxies generated.");
     }
 
-    public function testNoConfigDir_ThrowsException()
+    public function testNoConfigDirThrowsException()
     {
         $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
-        new ProxyFactory($this->_getTestEntityManager(), null, null);
+        new ProxyGenerator(null, null);
     }
 
-    public function testNoNamespace_ThrowsException()
+    public function testNoNamespaceThrowsException()
     {
         $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
-        new ProxyFactory($this->_getTestEntityManager(), __DIR__ . '/generated', null);
+        new ProxyGenerator(__DIR__ . '/generated', null);
+    }
+
+    public function testInvalidPlaceholderThrowsException()
+    {
+        $this->setExpectedException('Doctrine\ORM\Proxy\ProxyException');
+        $generator = new ProxyGenerator(__DIR__ . '/generated', 'SomeNamespace');
+        $generator->setPlaceholder('<somePlaceholder>', array());
     }
 
     protected function _getMockPersister()

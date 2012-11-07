@@ -21,6 +21,7 @@ namespace Doctrine\ORM\Proxy;
 
 use Doctrine\ORM\EntityManager;
 use Doctrine\Common\Util\ClassUtils;
+use Doctrine\Common\Persistence\Proxy;
 
 /**
  * This factory is used to create proxy objects for entities at runtime.
@@ -35,17 +36,32 @@ class ProxyFactory
     /**
      * @var EntityManager The EntityManager this factory is bound to.
      */
-    private $_em;
+    private $em;
+
+    /**
+     * @var \Doctrine\ORM\UnitOfWork The UnitOfWork this factory uses to retrieve persisters
+     */
+    private $uow;
 
     /**
      * @var ProxyGenerator the proxy generator responsible for creating the proxy classes/files.
      */
-    private $_generator;
+    private $proxyGenerator;
 
     /**
      * @var bool Whether to automatically (re)generate proxy classes.
      */
-    private $_autoGenerate;
+    private $autoGenerate;
+
+    /**
+     * @var string
+     */
+    private $proxyNs;
+
+    /**
+     * @var string
+     */
+    private $proxyDir;
 
     /**
      * Initializes a new instance of the <tt>ProxyFactory</tt> class that is
@@ -58,9 +74,11 @@ class ProxyFactory
      */
     public function __construct(EntityManager $em, $proxyDir, $proxyNs, $autoGenerate = false)
     {
-        $this->_em              = $em;
-        $this->_generator       = new ProxyGenerator($proxyDir, $proxyNs, $autoGenerate);
-        $this->_autoGenerate    = $autoGenerate;
+        $this->em           = $em;
+        $this->uow          = $em->getUnitOfWork();
+        $this->proxyDir     = $proxyDir;
+        $this->proxyNs      = $proxyNs;
+        $this->autoGenerate = $autoGenerate;
     }
 
     /**
@@ -73,19 +91,74 @@ class ProxyFactory
      */
     public function getProxy($className, $identifier)
     {
-        $fqn = $this->_generator->getProxyClassName($className);
+        $fqn = ClassUtils::generateProxyClassName($className, $this->proxyNs);
 
         if ( ! class_exists($fqn, false)) {
-            $fileName = $this->_generator->getProxyFileName($className);
+            $generator = $this->getProxyGenerator();
+            $fileName = $generator->getProxyFileName($className);
 
-            if ($this->_autoGenerate) {
-                $this->_generator->generateProxyClass($this->_em->getClassMetadata($className));
+            if ($this->autoGenerate) {
+                $generator->generateProxyClass($this->em->getClassMetadata($className));
             }
 
             require $fileName;
         }
 
-        return new $fqn($this->_em->getUnitOfWork()->getEntityPersister($className), $identifier);
+        $entityPersister = $this->uow->getEntityPersister($className);
+
+        $initializer = function(Proxy $proxy) use ($entityPersister, $identifier) {
+            $proxy->__setInitializer(function(){});
+            $proxy->__setCloner(function(){});
+
+
+            if ($proxy->__isInitialized()) {
+                return;
+            }
+
+            $properties = $proxy->__getLazyLoadedPublicProperties();
+
+            foreach ($properties as $propertyName => $property) {
+                if (!isset($proxy->$propertyName)) {
+                    $proxy->$propertyName = $properties[$propertyName];
+                }
+            }
+
+            $proxy->__setInitialized(true);
+
+            if (method_exists($proxy, '__wakeup')) {
+                $proxy->__wakeup();
+            }
+
+            if (null === $entityPersister->load($identifier, $proxy)) {
+                throw new \Doctrine\ORM\EntityNotFoundException();
+            }
+        };
+
+        $cloner = function(Proxy $proxy) use ($entityPersister, $identifier) {
+            if ($proxy->__isInitialized()) {
+                return;
+            }
+
+            $proxy->__setInitialized(true);
+            $proxy->__setInitializer(function(){});
+            $class = $entityPersister->getClassMetadata();
+            $original = $entityPersister->load($identifier);
+
+            if (null === $original) {
+                throw new \Doctrine\ORM\EntityNotFoundException();
+            }
+
+            foreach ($class->getReflectionClass()->getProperties() as $reflProperty) {
+                $propertyName = $reflProperty->getName();
+
+                if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
+                    $reflProperty->setAccessible(true);
+                    $reflProperty->setValue($proxy, $reflProperty->getValue($original));
+                }
+            }
+        };
+
+        return new $fqn($initializer, $cloner, $identifier);
     }
 
     /**
@@ -108,11 +181,33 @@ class ProxyFactory
                 continue;
             }
 
-            $proxyFileName = $this->_generator->getProxyFileName($class->getName(), $proxyDir);
-            $this->_generator->generateProxyClass($class, $proxyFileName);
+            $generator = $this->getProxyGenerator();
+
+            $proxyFileName = $generator->getProxyFileName($class->getName(), $proxyDir);
+            $generator->generateProxyClass($class, $proxyFileName);
             $generated += 1;
         }
 
         return $generated;
+    }
+
+    /**
+     * @param ProxyGenerator $proxyGenerator
+     */
+    public function setProxyGenerator(ProxyGenerator $proxyGenerator)
+    {
+        $this->proxyGenerator = $proxyGenerator;
+    }
+
+    /**
+     * @return ProxyGenerator
+     */
+    public function getProxyGenerator()
+    {
+        if (null === $this->proxyGenerator) {
+            $this->proxyGenerator = new ProxyGenerator($this->proxyDir, $this->proxyNs);
+        }
+
+        return $this->proxyGenerator;
     }
 }

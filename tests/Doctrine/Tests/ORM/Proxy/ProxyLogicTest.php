@@ -48,12 +48,16 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
      */
     public function setUp()
     {
+        $em = $this->getMock('Doctrine\ORM\EntityManager', array(), array(), '', false);
+        $uow = $this->getMock('Doctrine\ORM\UnitOfWork', array(), array(), '', false);
+
+        $em
+            ->expects($this->any())
+            ->method('getUnitOfWork')
+            ->will($this->returnValue($uow));
+
         // @todo move proxy generation to static::setUpBeforeClass
-        $this->proxyFactory = new ProxyFactory(
-            $this->getMock('Doctrine\ORM\EntityManager', array(), array(), '', false),
-            __DIR__ . '/generated',
-            __NAMESPACE__ . 'Proxy'
-        );
+        $this->proxyFactory = new ProxyFactory($em, __DIR__ . '/generated', __NAMESPACE__ . 'Proxy', true);
 
         // mocking a lot of classmetadata details. This helps ensuring that we won't have more requirements than needed
         // in future
@@ -124,19 +128,25 @@ class ProxyLogicTest extends PHPUnit_Framework_TestCase
             ->method('getClassMetadata')
             ->will($this->returnValue($this->lazyLoadableObjectMetadata));
 
-        if (!self::$generated) {
-            $this->proxyFactory->generateProxyClasses(array($metadata));
-            require_once __DIR__ . '/generated/__CG__LazyLoadableObject.php';
-            self::$generated = true;
-        }
+        $uow
+            ->expects($this->any())
+            ->method('getEntityPersister')
+            ->with('LazyLoadableObject')
+            ->will($this->returnValue($this->persisterMock));
 
-        $this->lazyObject = $proxy = new LazyLoadableObjectProxy(
-            $this->persisterMock,
+        $em
+            ->expects($this->any())
+            ->method('getClassMetadata')
+            ->will($this->returnValue($metadata));
+
+        $this->lazyObject = $this->proxyFactory->getProxy(
+            'LazyLoadableObject',
             array(
                 'publicIdentifierField' => 'publicIdentifierFieldValue',
                 'protectedIdentifierField' => 'protectedIdentifierFieldValue',
             )
         );
+
         $this->assertFalse($this->lazyObject->__isInitialized());
     }
 

@@ -91,62 +91,15 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public static $lazyPublicPropertiesDefaultValues = array(<lazyLoadedPublicPropertiesDefaultValues>);
 
     /**
-     * @param \Doctrine\ORM\Persisters\BasicEntityPersister $entityPersister
+     * @param \Closure $initializer
+     * @param \Closure $cloner
      * @param mixed[] $identifier
      */
-    public function __construct($entityPersister, $identifier)
+    public function __construct(\Closure $initializer, \Closure $cloner, array $identifier)
     {
         <ctorImpl>
-        $this->__initializer__ = function(<proxyClassName> $proxy, $method, $params) use ($entityPersister, $identifier) {
-            $proxy->__setInitializer(function(){});
-            $proxy->__setCloner(function(){});
-
-            if ($proxy->__isInitialized()) {
-                return;
-            }
-
-            $properties = $proxy->__getLazyLoadedPublicProperties();
-
-            foreach ($properties as $propertyName => $property) {
-                if (!isset($proxy->$propertyName)) {
-                    $proxy->$propertyName = $properties[$propertyName];
-                }
-            }
-
-            $proxy->__setInitialized(true);
-
-            if (method_exists($proxy, \'__wakeup\')) {
-                $proxy->__wakeup();
-            }
-
-            if (null === $entityPersister->load($identifier, $proxy)) {
-                throw new \Doctrine\ORM\EntityNotFoundException();
-            }
-        };
-
-        $this->__cloner__ = function(<proxyClassName> $proxy) use ($entityPersister, $identifier) {
-            if ($proxy->__isInitialized()) {
-                return;
-            }
-
-            $proxy->__setInitialized(true);
-            $proxy->__setInitializer(function(){});
-            $class = $entityPersister->getClassMetadata();
-            $original = $entityPersister->load($identifier);
-
-            if (null === $original) {
-                throw new \Doctrine\ORM\EntityNotFoundException();
-            }
-
-            foreach ($class->getReflectionClass()->getProperties() as $reflProperty) {
-                $propertyName = $reflProperty->getName();
-
-                if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
-                    $reflProperty->setAccessible(true);
-                    $reflProperty->setValue($proxy, $reflProperty->getValue($original));
-                }
-            }
-        };
+        $this->__initializer__ = $initializer;
+        $this->__cloner__      = $cloner;
     }
 
     /**
@@ -231,6 +184,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
      *
      * @param string $proxyDir The directory to use for the proxy classes. It must exist.
      * @param string $proxyNs The namespace to use for the proxy classes.
+     * @throws ProxyException
      */
     public function __construct($proxyDir, $proxyNs)
     {
@@ -275,7 +229,8 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
      * Set a placeholder to be replaced in the template
      *
      * @param string $name
-     * @param string|callable $placeholders
+     * @param string|callable $placeholder
+     * @throws ProxyException
      */
     public function setPlaceholder($name, $placeholder)
     {
@@ -596,6 +551,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
      * @param ClassMetadata $class Metadata for the original class
      * @param string $fileName Filename (full path) for the generated class
      * @param string $file The proxy class template data
+     * @throws ProxyException
      */
     public function generateProxyClass(ClassMetadata $class, $fileName = null, $file = null)
     {
@@ -608,7 +564,6 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         $fileName = $fileName ?: $this->getProxyFileName($class->getName());
         $file = $file ? $file : $this->proxyClassTemplate;
         $file = strtr($file, $placeholders);
-        //$file = str_replace($placeholders, $replacements, $file);
 
         $parentDirectory = dirname($fileName);
 

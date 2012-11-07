@@ -51,8 +51,7 @@ class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
     public function testPersistUpdate()
     {
         // Considering case (a)
-        $persister = $this->_em->getUnitOfWork()->getEntityPersister('Doctrine\Tests\Models\CMS\CmsUser');
-        $proxy = new Proxy($persister, array('id' => null));
+        $proxy = $this->_em->getProxyFactory()->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => null));
         $proxy->__isInitialized__ = true;
         $proxy->username = 'ocra';
         $proxy->name = 'Marco';
@@ -94,8 +93,7 @@ class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
      */
     public function testProxyAsDqlParameterPersist()
     {
-        $persister = $this->_em->getUnitOfWork()->getEntityPersister('Doctrine\Tests\Models\CMS\CmsUser');
-        $proxy = new Proxy($persister, array('id' => $this->user->getId()));
+        $proxy = $this->_em->getProxyFactory()->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $this->user->getId()));
         $proxy->id = $this->user->getId();
         $result = $this
             ->_em
