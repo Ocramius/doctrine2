@@ -86,6 +86,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 
     /**
      * @var array public properties to be lazy loaded (with their default values)
+     * @see \Doctrine\Common\Persistence\Proxy::__getLazyLoadedPublicProperties
      */
     public static $lazyPublicPropertiesDefaultValues = array(<lazyLoadedPublicPropertiesDefaultValues>);
 
@@ -104,9 +105,11 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
                 return;
             }
 
-            foreach ($proxy::$lazyPublicPropertiesDefaultValues as $propertyName => $property) {
+            $properties = $proxy->__getLazyLoadedPublicProperties();
+
+            foreach ($properties as $propertyName => $property) {
                 if (!isset($proxy->$propertyName)) {
-                    $proxy->$propertyName = $proxy::$lazyPublicPropertiesDefaultValues[$propertyName];
+                    $proxy->$propertyName = $properties[$propertyName];
                 }
             }
 
@@ -190,6 +193,11 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function __setCloner($cloner)
     {
         $this->__cloner__ = $cloner;
+    }
+
+    public function __getLazyLoadedPublicProperties()
+    {
+        return self::$lazyPublicPropertiesDefaultValues;
     }
 
     <magicGet>
@@ -345,7 +353,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         $lazyPublicProperties = array_keys($this->getLazyLoadedPublicProperties($class));
 
         if (!empty($lazyPublicProperties)) {
-            $magicGet .= "        if (array_key_exists(\$name, self::\$lazyPublicPropertiesDefaultValues)) {";
+            $magicGet .= "        if (array_key_exists(\$name, \$this->__getLazyLoadedPublicProperties())) {";
             $magicGet .= "\n            \$cb = \$this->__initializer__;";
             $magicGet .= "\n            \$cb(\$this, '__get', array(\$name));";
             $magicGet .= "\n\n            return \$this->\$name;";
@@ -375,7 +383,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             $magicSet .= "    {";
 
             if (!empty($lazyPublicProperties)) {
-                $magicSet .= "        if (array_key_exists(\$name, self::\$lazyPublicPropertiesDefaultValues)) {";
+                $magicSet .= "        if (array_key_exists(\$name, \$this->__getLazyLoadedPublicProperties())) {";
                 $magicSet .= "\n            \$cb = \$this->__initializer__;";
                 $magicSet .= "\n            \$cb(\$this, '__set', array(\$name, \$value));";
                 $magicSet .= "\n            \$this->\$name = \$value;";
@@ -406,7 +414,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             $sleepImpl .= "        \$properties = array_merge(array('__isInitialized__'), parent::__sleep());\n";
 
             $sleepImpl .= "\n        if(\$this->__isInitialized__) {\n";
-            $sleepImpl .= "            \$properties = array_diff(\$properties, array_keys(self::\$lazyPublicPropertiesDefaultValues));\n";
+            $sleepImpl .= "            \$properties = array_diff(\$properties, array_keys(\$this->__getLazyLoadedPublicProperties()));\n";
             $sleepImpl .= "        }\n";
 
             $sleepImpl .= "\n        return \$properties;";
@@ -452,7 +460,7 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
         $wakeupImpl .= "            \$proxy->__setInitializer(function(){});\n";
         $wakeupImpl .= "            \$proxy->__setCloner(function(){});\n";
         $wakeupImpl .= "            \$existingProperties = get_object_vars(\$proxy);\n\n";
-        $wakeupImpl .= "            foreach (self::\$lazyPublicPropertiesDefaultValues as \$lazyPublicProperty => \$defaultValue) {\n";
+        $wakeupImpl .= "            foreach (\$proxy->__getLazyLoadedPublicProperties() as \$lazyPublicProperty => \$defaultValue) {\n";
         $wakeupImpl .= "                if (!array_key_exists(\$lazyPublicProperty, \$existingProperties)) {\n";
         $wakeupImpl .= "                    \$proxy->\$lazyPublicProperty = \$defaultValue;\n";
         $wakeupImpl .= "                }\n";
@@ -482,11 +490,8 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
     public function generateMethods(ClassMetadata $class)
     {
         $methods = '';
-
         $methodNames = array();
-        $reflectionMethods = $class
-            ->getReflectionClass()
-            ->getMethods(\ReflectionMethod::IS_PUBLIC);
+        $reflectionMethods = $class->getReflectionClass()->getMethods(\ReflectionMethod::IS_PUBLIC);
         $skippedMethods = array(
             '__sleep'   => true,
             '__clone'   => true,
@@ -510,11 +515,12 @@ class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
             }
 
             $methodNames[$name] = true;
-
             $methods .= "\n" . '    public function ';
+
             if ($method->returnsReference()) {
                 $methods .= '&';
             }
+
             $methods .= $name . '(';
             $firstParam = true;
             $parameterString = $argumentString = '';
