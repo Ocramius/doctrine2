@@ -68,10 +68,10 @@ class ProxyFactory
      * Initializes a new instance of the <tt>ProxyFactory</tt> class that is
      * connected to the given <tt>EntityManager</tt>.
      *
-     * @param EntityManager $em The EntityManager the new factory works for.
-     * @param string $proxyDir The directory to use for the proxy classes. It must exist.
-     * @param string $proxyNs The namespace to use for the proxy classes.
-     * @param boolean $autoGenerate Whether to automatically generate proxy classes.
+     * @param EntityManager $em           The EntityManager the new factory works for.
+     * @param string        $proxyDir     The directory to use for the proxy classes. It must exist.
+     * @param string        $proxyNs      The namespace to use for the proxy classes.
+     * @param boolean       $autoGenerate Whether to automatically generate proxy classes.
      */
     public function __construct(EntityManager $em, $proxyDir, $proxyNs, $autoGenerate = false)
     {
@@ -86,8 +86,8 @@ class ProxyFactory
      * Gets a reference proxy instance for the entity of the given type and identified by
      * the given identifier.
      *
-     * @param string $className
-     * @param mixed $identifier
+     * @param  string $className
+     * @param  mixed  $identifier
      * @return object
      */
     public function getProxy($className, $identifier)
@@ -107,10 +107,9 @@ class ProxyFactory
 
         $entityPersister = $this->uow->getEntityPersister($className);
 
-        $initializer = function(Proxy $proxy) use ($entityPersister, $identifier) {
-            $proxy->__setInitializer(function(){});
-            $proxy->__setCloner(function(){});
-
+        $initializer = function (Proxy $proxy) use ($entityPersister, $identifier) {
+            $proxy->__setInitializer(function () {});
+            $proxy->__setCloner(function () {});
 
             if ($proxy->__isInitialized()) {
                 return;
@@ -135,13 +134,13 @@ class ProxyFactory
             }
         };
 
-        $cloner = function(Proxy $proxy) use ($entityPersister, $identifier) {
+        $cloner = function (Proxy $proxy) use ($entityPersister, $identifier) {
             if ($proxy->__isInitialized()) {
                 return;
             }
 
             $proxy->__setInitialized(true);
-            $proxy->__setInitializer(function(){});
+            $proxy->__setInitializer(function () {});
             $class = $entityPersister->getClassMetadata();
             $original = $entityPersister->load($identifier);
 
@@ -149,12 +148,12 @@ class ProxyFactory
                 throw new \Doctrine\ORM\EntityNotFoundException();
             }
 
-            foreach ($class->getReflectionClass()->getProperties() as $reflProperty) {
-                $propertyName = $reflProperty->getName();
+            foreach ($class->getReflectionClass()->getProperties() as $reflectionProperty) {
+                $propertyName = $reflectionProperty->getName();
 
                 if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
-                    $reflProperty->setAccessible(true);
-                    $reflProperty->setValue($proxy, $reflProperty->getValue($original));
+                    $reflectionProperty->setAccessible(true);
+                    $reflectionProperty->setValue($proxy, $reflectionProperty->getValue($original));
                 }
             }
         };

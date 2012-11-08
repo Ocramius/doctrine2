@@ -22,35 +22,19 @@ namespace Doctrine\ORM\Proxy;
 /**
  * ORM Proxy Exception
  *
- * @license     http://www.opensource.org/licenses/lgpl-license.php LGPL
  * @link        www.doctrine-project.com
  * @since       1.0
  * @author      Benjamin Eberlei <kontakt@beberlei.de>
  */
-class ProxyException extends \Doctrine\ORM\ORMException {
-
-    public static function proxyDirectoryRequired() {
-        return new self("You must configure a proxy directory. See docs for details");
-    }
-
-    public static function proxyDirectoryNotWritable() {
-        return new self("Your proxy directory must be writable.");
-    }
-
-    public static function proxyNamespaceRequired() {
-        return new self("You must configure a proxy namespace. See docs for details");
-    }
-
-    public static function invalidPlaceholder($name) {
-        return new self("Provided placeholder for '$name' must be either a string or a valid callable");
-    }
-
+class ProxyException extends \Doctrine\ORM\ORMException
+{
+    /**
+     * @param  string $className
+     * @param  string $proxyNamespace
+     * @return self
+     */
     public static function notProxyClass($className, $proxyNamespace)
     {
-        return new self(sprintf(
-            "The class %s is not part of the proxy namespace %s",
-            $className, $proxyNamespace
-        ));
+        return new self('The class "' . $className . '" is not part of the proxy namespace "' . $proxyNamespace . '"');
     }
-
 }
