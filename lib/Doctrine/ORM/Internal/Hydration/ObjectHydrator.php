@@ -38,8 +38,9 @@ use Doctrine\ORM\Proxy\Proxy;
  */
 class ObjectHydrator extends AbstractHydrator
 {
-    /* Local ClassMetadata cache to avoid going to the EntityManager all the time.
-     * This local cache is maintained between hydration runs and not cleared.
+    /**
+     * @var ClassMetadata[] Local ClassMetadata cache to avoid going to the EntityManager all the time.
+     *                      This local cache is maintained between hydration runs and not cleared.
      */
     private $ce = array();
 
@@ -405,7 +406,8 @@ class ObjectHydrator extends AbstractHydrator
 
                 // Check the type of the relation (many or single-valued)
                 if ( ! ($relation['type'] & ClassMetadata::TO_ONE)) {
-                    $reflFieldValue = $parentClass->getFieldValue($parentObject, $relationField);
+                    $reflFieldValue = $reflField->getValue($parentObject);
+
                     // PATH A: Collection-valued association
                     if (isset($nonemptyComponents[$dqlAlias])) {
                         $collKey = $oid . $relationField;
@@ -454,8 +456,7 @@ class ObjectHydrator extends AbstractHydrator
 
                 } else {
                     // PATH B: Single-valued association
-                    /* @var $reflField \ReflectionProperty */
-                    $reflFieldValue = $parentClass->getFieldValue($parentObject, $relationField);
+                    $reflFieldValue = $reflField->getValue($parentObject);
 
                     if (
                         ! $reflFieldValue

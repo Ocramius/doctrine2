@@ -657,7 +657,7 @@ class ClassMetadataInfo implements ClassMetadata
             $id = array();
 
             foreach ($this->identifier as $idField) {
-                $value = $this->getFieldValue($entity, $idField);
+                $value = $this->reflFields[$idField]->getValue($entity);
 
                 if ($value !== null) {
                     $id[$idField] = $value;
@@ -667,13 +667,14 @@ class ClassMetadataInfo implements ClassMetadata
             return $id;
         }
 
-        $value = $this->getFieldValue($entity, $this->identifier[0]);
+        $id = $this->identifier[0];
+        $value = $this->reflFields[$id]->getValue($entity);
 
-        if ($value !== null) {
-            return array($this->identifier[0] => $value);
+        if (null === $value) {
+            return array();
         }
 
-        return array();
+        return array($id => $value);
     }
 
     /**
@@ -707,12 +708,10 @@ class ClassMetadataInfo implements ClassMetadata
      *
      * @param object $entity
      * @param string $field
-     * @param mixed  $default
      */
-    public function getFieldValue($entity, $field, $default = null)
+    public function getFieldValue($entity, $field)
     {
-        $reflField = $this->reflFields[$field];
-        return $reflField->isPublic() && !isset($entity->{$reflField->getName()}) ? $default : $reflField->getValue($entity);
+        return $this->reflFields[$field]->getValue($entity);
     }
 
     /**
