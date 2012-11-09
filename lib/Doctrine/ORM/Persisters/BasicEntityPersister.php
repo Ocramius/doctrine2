@@ -431,9 +431,9 @@ class BasicEntityPersister
                 $set[] = $versionColumn . ' = CURRENT_TIMESTAMP';
             }
 
-            $where[] = $versionColumn;
-            $params[] = $this->_class->getFieldValue($entity, $versionField);
-            $types[] = $this->_class->fieldMappings[$versionField]['type'];
+            $where[]  = $versionColumn;
+            $params[] = $this->_class->reflFields[$versionField]->getValue($entity);
+            $types[]  = $this->_class->fieldMappings[$versionField]['type'];
         }
 
         $sql = 'UPDATE ' . $quotedTableName
@@ -733,7 +733,7 @@ class BasicEntityPersister
                 // unset the old value and set the new sql aliased value here. By definition
                 // unset($identifier[$targetKeyColumn] works here with how UnitOfWork::createEntity() calls this method.
                 $identifier[$this->_getSQLTableAlias($targetClass->name) . "." . $targetKeyColumn] =
-                    $sourceClass->getFieldValue($sourceEntity, $sourceClass->fieldNames[$sourceKeyColumn]);
+                    $sourceClass->reflFields[$sourceClass->fieldNames[$sourceKeyColumn]]->getValue($sourceEntity);
 
                 unset($identifier[$targetKeyColumn]);
             }
@@ -940,7 +940,7 @@ class BasicEntityPersister
 
                 if ($sourceClass->containsForeignIdentifier) {
                     $field = $sourceClass->getFieldForColumn($sourceKeyColumn);
-                    $value = $sourceClass->getFieldValue($sourceEntity, $field);
+                    $value = $sourceClass->reflFields[$field]->getValue($sourceEntity);
 
                     if (isset($sourceClass->associationMappings[$field])) {
                         $value = $this->_em->getUnitOfWork()->getEntityIdentifier($value);
@@ -949,7 +949,8 @@ class BasicEntityPersister
 
                     $criteria[$quotedJoinTable . "." . $quotedKeyColumn] = $value;
                 } else if (isset($sourceClass->fieldNames[$sourceKeyColumn])) {
-                    $criteria[$quotedJoinTable . "." . $quotedKeyColumn] = $sourceClass->getFieldValue($sourceEntity, $sourceClass->fieldNames[$sourceKeyColumn]);
+                    $criteria[$quotedJoinTable . "." . $quotedKeyColumn] =
+                        $sourceClass->reflFields[$sourceClass->fieldNames[$sourceKeyColumn]]->getValue($sourceEntity);
                 } else {
                     throw MappingException::joinColumnMustPointToMappedField(
                         $sourceClass->name, $sourceKeyColumn
@@ -967,7 +968,7 @@ class BasicEntityPersister
 
                 if ($sourceClass->containsForeignIdentifier) {
                     $field = $sourceClass->getFieldForColumn($sourceKeyColumn);
-                    $value = $sourceClass->getFieldValue($sourceEntity, $field);
+                    $value = $value = $sourceClass->reflFields[$field]->getValue($sourceEntity);
 
                     if (isset($sourceClass->associationMappings[$field])) {
                         $value = $this->_em->getUnitOfWork()->getEntityIdentifier($value);
@@ -976,7 +977,8 @@ class BasicEntityPersister
 
                     $criteria[$quotedJoinTable . "." . $quotedKeyColumn] = $value;
                 } else if (isset($sourceClass->fieldNames[$sourceKeyColumn])) {
-                    $criteria[$quotedJoinTable . "." . $quotedKeyColumn] = $sourceClass->getFieldValue($sourceEntity, $sourceClass->fieldNames[$sourceKeyColumn]);
+                    $criteria[$quotedJoinTable . "." . $quotedKeyColumn] =
+                        $sourceClass->reflFields[$sourceClass->fieldNames[$sourceKeyColumn]]->getValue($sourceEntity);
                 } else {
                     throw MappingException::joinColumnMustPointToMappedField(
                         $sourceClass->name, $sourceKeyColumn
@@ -1574,7 +1576,7 @@ class BasicEntityPersister
         foreach ($owningAssoc['targetToSourceKeyColumns'] as $sourceKeyColumn => $targetKeyColumn) {
             if ($sourceClass->containsForeignIdentifier) {
                 $field = $sourceClass->getFieldForColumn($sourceKeyColumn);
-                $value = $sourceClass->getFieldValue($sourceEntity, $field);
+                $value = $sourceClass->reflFields[$field]->getValue($sourceEntity);
 
                 if (isset($sourceClass->associationMappings[$field])) {
                     $value = $this->_em->getUnitOfWork()->getEntityIdentifier($value);
@@ -1583,7 +1585,8 @@ class BasicEntityPersister
 
                 $criteria[$tableAlias . "." . $targetKeyColumn] = $value;
             } else {
-                $criteria[$tableAlias . "." . $targetKeyColumn] = $sourceClass->getFieldValue($sourceEntity, $sourceClass->fieldNames[$sourceKeyColumn]);
+                $criteria[$tableAlias . "." . $targetKeyColumn] =
+                    $sourceClass->reflFields[$sourceClass->fieldNames[$sourceKeyColumn]]->getValue($sourceEntity);
             }
         }
 
