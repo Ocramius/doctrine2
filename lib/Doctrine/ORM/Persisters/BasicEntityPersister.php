@@ -968,7 +968,7 @@ class BasicEntityPersister
 
                 if ($sourceClass->containsForeignIdentifier) {
                     $field = $sourceClass->getFieldForColumn($sourceKeyColumn);
-                    $value = $value = $sourceClass->reflFields[$field]->getValue($sourceEntity);
+                    $value = $sourceClass->reflFields[$field]->getValue($sourceEntity);
 
                     if (isset($sourceClass->associationMappings[$field])) {
                         $value = $this->_em->getUnitOfWork()->getEntityIdentifier($value);
