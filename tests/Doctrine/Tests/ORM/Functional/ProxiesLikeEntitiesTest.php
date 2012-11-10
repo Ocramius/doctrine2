@@ -76,14 +76,10 @@ class ProxiesLikeEntitiesTest extends \Doctrine\Tests\OrmFunctionalTestCase
         $uninitializedProxy = $this->_em->getReference('Doctrine\Tests\Models\CMS\CmsUser', $userId);
         $this->assertInstanceOf('Doctrine\Tests\Proxies\__CG__\Doctrine\Tests\Models\CMS\CmsUser', $uninitializedProxy);
 
-        // moved
-        $uninitializedProxy->username = 'ocra';
-        $uninitializedProxy->name = 'Marco Pivetta';
-
-        $this->assertFalse($uninitializedProxy->__isInitialized());
         $this->_em->persist($uninitializedProxy);
         $this->_em->flush($uninitializedProxy);
-        $this->assertEquals($this->user->getId(), $uninitializedProxy->getId());
+        $this->assertFalse($uninitializedProxy->__isInitialized(), 'Proxy didn\'t get initialized during flush operations');
+        $this->assertEquals($userId, $uninitializedProxy->getId());
         $this->_em->remove($uninitializedProxy);
         $this->_em->flush();
     }

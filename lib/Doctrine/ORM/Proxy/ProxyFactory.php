@@ -93,13 +93,14 @@ class ProxyFactory
     public function getProxy($className, $identifier)
     {
         $fqn = ClassUtils::generateProxyClassName($className, $this->proxyNs);
+        $metadata = $this->em->getClassMetadata($className);
 
         if ( ! class_exists($fqn, false)) {
             $generator = $this->getProxyGenerator();
             $fileName = $generator->getProxyFileName($className);
 
             if ($this->autoGenerate) {
-                $generator->generateProxyClass($this->em->getClassMetadata($className));
+                $generator->generateProxyClass($metadata);
             }
 
             require $fileName;
@@ -158,7 +159,15 @@ class ProxyFactory
             }
         };
 
-        return new $fqn($initializer, $cloner, $identifier);
+        $proxy = new $fqn($initializer, $cloner);
+
+        foreach ($metadata->getIdentifierFieldNames() as $idField) {
+            if (isset($identifier[$idField])) {
+                $metadata->setFieldValue($proxy, $idField, $identifier[$idField]);
+            }
+        }
+
+        return $proxy;
     }
 
     /**
