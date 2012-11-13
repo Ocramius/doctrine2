@@ -34,25 +34,42 @@ use Doctrine\ORM\Persisters\BasicEntityPersister;
  */
 class ProxyPerformanceTest extends OrmPerformanceTestCase
 {
-    public function testProxyInstantiationPerformance()
+    /**
+     * @return array
+     */
+    public function entitiesProvider()
+    {
+        return array(
+            array('Doctrine\Tests\Models\CMS\CmsEmployee'),
+            array('Doctrine\Tests\Models\CMS\CmsUser'),
+        );
+    }
+
+    /**
+     * @dataProvider entitiesProvider
+     */
+    public function testProxyInstantiationPerformance($entityName)
     {
         $proxyFactory = $this->_getEntityManager()->getProxyFactory();
         $this->setMaxRunningTime(20);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000; $i += 1) {
-            $user = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
+            $user = $proxyFactory->getProxy($entityName, array('id' => $i));
         }
 
-        echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
+        echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds with " . $entityName . PHP_EOL;
     }
 
-    public function testProxyForcedInitializationPerformance()
+    /**
+     * @dataProvider entitiesProvider
+     */
+    public function testProxyForcedInitializationPerformance($entityName)
     {
         $em              = new MockEntityManager($this->_getEntityManager());
         $proxyFactory    = $em->getProxyFactory();
         /* @var $user \Doctrine\Common\Proxy\Proxy */
-        $user            = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => 1));
+        $user            = $proxyFactory->getProxy($entityName, array('id' => 1));
         $initializer     = $user->__getInitializer();
 
         $this->setMaxRunningTime(2);
@@ -65,7 +82,7 @@ class ProxyPerformanceTest extends OrmPerformanceTestCase
             $user->__load();
         }
 
-        echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
+        echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds with " . $entityName . PHP_EOL;
     }
 }
 
