@@ -21,6 +21,10 @@ namespace Doctrine\Tests\ORM\Performance;
 
 use Doctrine\Tests\OrmPerformanceTestCase;
 use Doctrine\Common\Proxy\Proxy;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\UnitOfWork;
+use Doctrine\ORM\Proxy\ProxyFactory;
+use Doctrine\ORM\Persisters\BasicEntityPersister;
 
 /**
  * Performance test used to measure performance of proxy instantiation
@@ -32,12 +36,12 @@ class ProxyPerformanceTest extends OrmPerformanceTestCase
 {
     public function testProxyInstantiationPerformance()
     {
-        $em = $this->_getEntityManager();
+        $proxyFactory = $this->_getEntityManager()->getProxyFactory();
         $this->setMaxRunningTime(20);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000; $i += 1) {
-            $user = $em->getReference('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
+            $user = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
         }
 
         echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
@@ -45,24 +49,102 @@ class ProxyPerformanceTest extends OrmPerformanceTestCase
 
     public function testProxyForcedInitializationPerformance()
     {
-        $em          = $this->_getEntityManager();
-        $identifier  = array('id' => 1);
-
+        $em              = new MockEntityManager($this->_getEntityManager());
+        $proxyFactory    = $em->getProxyFactory();
+        $persister       = $em->getUnitOfWork()->getEntityPersister('Doctrine\Tests\Models\CMS\CmsUser');
+        $identifier      = array('id' => 1);
         /* @var $user \Doctrine\Common\Proxy\Proxy */
-        $user      = $em->getReference('Doctrine\Tests\Models\CMS\CmsUser', array('id' => 1));
-        $persister = $this->getMock('Doctrine\ORM\Persisters\BasicEntityPersister', array('load'), array(), '', false);
-        $persister->expects($this->any())->method('load')->will($this->returnValue($user));
+        $user            = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', $identifier);
 
         $this->setMaxRunningTime(2);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000;  $i += 1) {
-            $user->__initialized__  = false;
-            $user->_entityPersister = $persister;
-            $user->_identifier      = $identifier;
+            $user->__isInitialized__ = false;
+            $user->_entityPersister  = $persister;
+            $user->_identifier       = $identifier;
+            $user->__load();
             $user->__load();
         }
 
         echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
+    }
+}
+
+/**
+ * Mock entity manager to fake `getPersister()`
+ */
+class MockEntityManager extends EntityManager
+{
+    /** @var EntityManager */
+    private $em;
+
+    /** @param EntityManager $em */
+    public function __construct(EntityManager $em)
+    {
+        $this->em = $em;
+    }
+
+    /** {@inheritDoc} */
+    public function getProxyFactory()
+    {
+        $config = $this->em->getConfiguration();
+
+        return new ProxyFactory(
+            $this,
+            $config->getProxyDir(),
+            $config->getProxyNamespace(),
+            $config->getAutoGenerateProxyClasses()
+        );
+    }
+
+    /** {@inheritDoc} */
+    public function getClassMetadata($className)
+    {
+        return $this->em->getClassMetadata($className);
+    }
+
+    /** {@inheritDoc} */
+    public function getUnitOfWork()
+    {
+        return new MockUnitOfWork();
+    }
+}
+
+/**
+ * Mock UnitOfWork manager to fake `getPersister()`
+ */
+class MockUnitOfWork extends UnitOfWork
+{
+    /** @var PersisterMock */
+    private $entityPersister;
+
+    /** */
+    public function __construct()
+    {
+        $this->entityPersister = new PersisterMock();
+    }
+
+    /** {@inheritDoc} */
+    public function getEntityPersister($entityName)
+    {
+        return $this->entityPersister;
+    }
+}
+
+/**
+ * Mock persister (we don't want PHPUnit comparator API to play a role in here)
+ */
+class PersisterMock extends BasicEntityPersister
+{
+    /** */
+    public function __construct()
+    {
+    }
+
+    /** {@inheritDoc} */
+    public function load(array $criteria, $entity = null, $assoc = null, array $hints = array(), $lockMode = 0, $limit = null, array $orderBy = null)
+    {
+        return $entity;
     }
 }
