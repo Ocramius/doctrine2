@@ -349,8 +349,8 @@ namespace <namespace>;
  */
 class <proxyClassName> extends \<className> implements \Doctrine\ORM\Proxy\Proxy
 {
-    private $_entityPersister;
-    private $_identifier;
+    public $_entityPersister;
+    public $_identifier;
     public $__isInitialized__ = false;
     public function __construct($entityPersister, $identifier)
     {
