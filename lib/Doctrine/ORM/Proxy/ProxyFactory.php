@@ -20,6 +20,8 @@
 namespace Doctrine\ORM\Proxy;
 
 use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\EntityNotFoundException;
+
 use Doctrine\Common\Util\ClassUtils;
 use Doctrine\Common\Proxy\Proxy;
 use Doctrine\Common\Proxy\ProxyGenerator;
@@ -65,6 +67,17 @@ class ProxyFactory
     private $proxyDir;
 
     /**
+     * @var array definitions (indexed by requested class name) for the proxy classes.
+     *            Each element is an array containing following items:
+     *            "fqcn" - FQCN of the proxy class
+     *            "initializer" - Closure to be used as proxy __initializer__
+     *            "cloner" - Closure to be used as proxy __cloner__
+     *            "identifierFields" - list of field names for the identifiers
+     *            "reflectionFields" - ReflectionProperties for the fields
+     */
+    private $definitions = array();
+
+    /**
      * Initializes a new instance of the <tt>ProxyFactory</tt> class that is
      * connected to the given <tt>EntityManager</tt>.
      *
@@ -92,78 +105,20 @@ class ProxyFactory
      */
     public function getProxy($className, $identifier)
     {
-        $fqn = ClassUtils::generateProxyClassName($className, $this->proxyNs);
-        $metadata = $this->em->getClassMetadata($className);
-
-        if ( ! class_exists($fqn, false)) {
-            $generator = $this->getProxyGenerator();
-            $fileName = $generator->getProxyFileName($className);
-
-            if ($this->autoGenerate) {
-                $generator->generateProxyClass($metadata);
-            }
-
-            require $fileName;
+        if ( ! isset($this->definitions[$className])) {
+            $this->initProxyDefinitions($className);
         }
 
-        $entityPersister = $this->uow->getEntityPersister($className);
+        $definition         = $this->definitions[$className];
+        $fqcn               = $definition['fqcn'];
+        $identifierFields   = $definition['identifierFields'];
+        /* @var $reflectionFields \ReflectionProperty[] */
+        $reflectionFields   = $definition['reflectionFields'];
+        $proxy              = new $fqcn($definition['initializer'], $definition['cloner']);
 
-        $initializer = function (Proxy $proxy) use ($entityPersister, $identifier) {
-            $proxy->__setInitializer(function () {});
-            $proxy->__setCloner(function () {});
-
-            if ($proxy->__isInitialized()) {
-                return;
-            }
-
-            $properties = $proxy->__getLazyLoadedPublicProperties();
-
-            foreach ($properties as $propertyName => $property) {
-                if (!isset($proxy->$propertyName)) {
-                    $proxy->$propertyName = $properties[$propertyName];
-                }
-            }
-
-            $proxy->__setInitialized(true);
-
-            if (method_exists($proxy, '__wakeup')) {
-                $proxy->__wakeup();
-            }
-
-            if (null === $entityPersister->load($identifier, $proxy)) {
-                throw new \Doctrine\ORM\EntityNotFoundException();
-            }
-        };
-
-        $cloner = function (Proxy $proxy) use ($entityPersister, $identifier) {
-            if ($proxy->__isInitialized()) {
-                return;
-            }
-
-            $proxy->__setInitialized(true);
-            $proxy->__setInitializer(function () {});
-            $class = $entityPersister->getClassMetadata();
-            $original = $entityPersister->load($identifier);
-
-            if (null === $original) {
-                throw new \Doctrine\ORM\EntityNotFoundException();
-            }
-
-            foreach ($class->getReflectionClass()->getProperties() as $reflectionProperty) {
-                $propertyName = $reflectionProperty->getName();
-
-                if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
-                    $reflectionProperty->setAccessible(true);
-                    $reflectionProperty->setValue($proxy, $reflectionProperty->getValue($original));
-                }
-            }
-        };
-
-        $proxy = new $fqn($initializer, $cloner);
-
-        foreach ($metadata->getIdentifierFieldNames() as $idField) {
-            if (isset($identifier[$idField])) {
-                $metadata->setFieldValue($proxy, $idField, $identifier[$idField]);
+        foreach ($identifierFields as $idField) {
+            if (array_key_exists($idField, $identifier)) {
+                $reflectionFields[$idField]->setValue($proxy, $identifier[$idField]);
             }
         }
 
@@ -219,5 +174,111 @@ class ProxyFactory
         }
 
         return $this->proxyGenerator;
+    }
+
+    /**
+     * @param string $className
+     */
+    private function initProxyDefinitions($className)
+    {
+        $fqcn = ClassUtils::generateProxyClassName($className, $this->proxyNs);
+        $classMetadata = $this->em->getClassMetadata($className);
+
+        if ( ! class_exists($fqcn, false)) {
+            $generator = $this->getProxyGenerator();
+            $fileName = $generator->getProxyFileName($className);
+
+            if ($this->autoGenerate) {
+                $generator->generateProxyClass($classMetadata);
+            }
+
+            require $fileName;
+        }
+
+        $entityPersister = $this->uow->getEntityPersister($className);
+
+        if ($classMetadata->getReflectionClass()->hasMethod('__wakeup')) {
+            $initializer = function (Proxy $proxy) use ($entityPersister, $classMetadata) {
+                $proxy->__setInitializer(function () {});
+                $proxy->__setCloner(function () {});
+
+                if ($proxy->__isInitialized()) {
+                    return;
+                }
+
+                $properties = $proxy->__getLazyLoadedPublicProperties();
+
+                foreach ($properties as $propertyName => $property) {
+                    if (!isset($proxy->$propertyName)) {
+                        $proxy->$propertyName = $properties[$propertyName];
+                    }
+                }
+
+                $proxy->__setInitialized(true);
+
+                if (method_exists($proxy, '__wakeup')) {
+                    $proxy->__wakeup();
+                }
+
+                if (null === $entityPersister->load($classMetadata->getIdentifierValues($proxy), $proxy)) {
+                    throw new EntityNotFoundException();
+                }
+            };
+        } else {
+            $initializer = function (Proxy $proxy) use ($entityPersister, $classMetadata) {
+                $proxy->__setInitializer(function () {});
+                $proxy->__setCloner(function () {});
+
+                if ($proxy->__isInitialized()) {
+                    return;
+                }
+
+                $properties = $proxy->__getLazyLoadedPublicProperties();
+
+                foreach ($properties as $propertyName => $property) {
+                    if (!isset($proxy->$propertyName)) {
+                        $proxy->$propertyName = $properties[$propertyName];
+                    }
+                }
+
+                $proxy->__setInitialized(true);
+
+                if (null === $entityPersister->load($classMetadata->getIdentifierValues($proxy), $proxy)) {
+                    throw new EntityNotFoundException();
+                }
+            };
+        }
+
+        $cloner = function (Proxy $proxy) use ($entityPersister, $classMetadata) {
+            if ($proxy->__isInitialized()) {
+                return;
+            }
+
+            $proxy->__setInitialized(true);
+            $proxy->__setInitializer(function () {});
+            $class = $entityPersister->getClassMetadata();
+            $original = $entityPersister->load($classMetadata->getIdentifierValues($proxy));
+
+            if (null === $original) {
+                throw new EntityNotFoundException();
+            }
+
+            foreach ($class->getReflectionClass()->getProperties() as $reflectionProperty) {
+                $propertyName = $reflectionProperty->getName();
+
+                if ($class->hasField($propertyName) || $class->hasAssociation($propertyName)) {
+                    $reflectionProperty->setAccessible(true);
+                    $reflectionProperty->setValue($proxy, $reflectionProperty->getValue($original));
+                }
+            }
+        };
+
+        $this->definitions[$className] = array(
+            'fqcn'                        => $fqcn,
+            'initializer'                 => $initializer,
+            'cloner'                      => $cloner,
+            'identifierFields'            => $classMetadata->getIdentifierFieldNames(),
+            'reflectionFields'            => $classMetadata->getReflectionProperties(),
+        );
     }
 }

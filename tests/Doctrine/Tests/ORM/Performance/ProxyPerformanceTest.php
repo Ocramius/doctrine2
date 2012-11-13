@@ -19,7 +19,6 @@
 
 namespace Doctrine\Tests\ORM\Performance;
 
-use PHPUnit_Framework_TestCase;
 use Doctrine\Tests\OrmPerformanceTestCase;
 use Doctrine\Common\Proxy\Proxy;
 
@@ -27,6 +26,7 @@ use Doctrine\Common\Proxy\Proxy;
  * Performance test used to measure performance of proxy instantiation
  *
  * @author Marco Pivetta <ocramius@gmail.com>
+ * @group performance
  */
 class ProxyPerformanceTest extends OrmPerformanceTestCase
 {
