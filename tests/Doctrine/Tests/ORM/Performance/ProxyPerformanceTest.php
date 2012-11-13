@@ -34,27 +34,44 @@ use Doctrine\ORM\Persisters\BasicEntityPersister;
  */
 class ProxyPerformanceTest extends OrmPerformanceTestCase
 {
-    public function testProxyInstantiationPerformance()
+    /**
+     * @return array
+     */
+    public function entitiesProvider()
+    {
+        return array(
+            array('Doctrine\Tests\Models\CMS\CmsEmployee'),
+            array('Doctrine\Tests\Models\CMS\CmsUser'),
+        );
+    }
+
+    /**
+     * @dataProvider entitiesProvider
+     */
+    public function testProxyInstantiationPerformance($entityName)
     {
         $proxyFactory = $this->_getEntityManager()->getProxyFactory();
         $this->setMaxRunningTime(20);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000; $i += 1) {
-            $user = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
+            $user = $proxyFactory->getProxy($entityName, array('id' => $i));
         }
 
         echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
     }
 
-    public function testProxyForcedInitializationPerformance()
+    /**
+     * @dataProvider entitiesProvider
+     */
+    public function testProxyForcedInitializationPerformance($entityName)
     {
         $em              = new MockEntityManager($this->_getEntityManager());
         $proxyFactory    = $em->getProxyFactory();
-        $persister       = $em->getUnitOfWork()->getEntityPersister('Doctrine\Tests\Models\CMS\CmsUser');
+        $persister       = $em->getUnitOfWork()->getEntityPersister($entityName);
         $identifier      = array('id' => 1);
         /* @var $user \Doctrine\Common\Proxy\Proxy */
-        $user            = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', $identifier);
+        $user            = $proxyFactory->getProxy($entityName, $identifier);
 
         $this->setMaxRunningTime(2);
         $start = microtime(true);
