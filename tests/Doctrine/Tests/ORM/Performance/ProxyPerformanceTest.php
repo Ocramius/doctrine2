@@ -21,6 +21,10 @@ namespace Doctrine\Tests\ORM\Performance;
 
 use Doctrine\Tests\OrmPerformanceTestCase;
 use Doctrine\Common\Proxy\Proxy;
+use Doctrine\ORM\EntityManager;
+use Doctrine\ORM\UnitOfWork;
+use Doctrine\ORM\Proxy\ProxyFactory;
+use Doctrine\ORM\Persisters\BasicEntityPersister;
 
 /**
  * Performance test used to measure performance of proxy instantiation
@@ -32,12 +36,12 @@ class ProxyPerformanceTest extends OrmPerformanceTestCase
 {
     public function testProxyInstantiationPerformance()
     {
-        $em = $this->_getEntityManager();
+        $proxyFactory = $this->_getEntityManager()->getProxyFactory();
         $this->setMaxRunningTime(20);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000; $i += 1) {
-            $user = $em->getReference('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
+            $user = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => $i));
         }
 
         echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
@@ -45,44 +49,100 @@ class ProxyPerformanceTest extends OrmPerformanceTestCase
 
     public function testProxyForcedInitializationPerformance()
     {
-        $em          = $this->_getEntityManager();
-        $identifier  = array('id' => 1);
-
-        // @todo emulating what is happening in the proxy factory here (should mock the persister)
-        $initializer = function (Proxy $proxy) use ($identifier) {
-            $proxy->__setInitializer(function () {});
-            $proxy->__setCloner(function () {});
-
-            if ($proxy->__isInitialized()) {
-                return;
-            }
-
-            $properties = $proxy->__getLazyLoadedPublicProperties();
-
-            foreach ($properties as $propertyName => $property) {
-                if (!isset($proxy->$propertyName)) {
-                    $proxy->$propertyName = $properties[$propertyName];
-                }
-            }
-
-            $proxy->__setInitialized(true);
-
-            if (method_exists($proxy, '__wakeup')) {
-                $proxy->__wakeup();
-            }
-        };
-
+        $em              = new MockEntityManager($this->_getEntityManager());
+        $proxyFactory    = $em->getProxyFactory();
         /* @var $user \Doctrine\Common\Proxy\Proxy */
-        $user = $em->getReference('Doctrine\Tests\Models\CMS\CmsUser', array('id' => 1));
+        $user            = $proxyFactory->getProxy('Doctrine\Tests\Models\CMS\CmsUser', array('id' => 1));
+        $initializer     = $user->__getInitializer();
 
         $this->setMaxRunningTime(2);
         $start = microtime(true);
 
         for ($i = 0; $i < 100000;  $i += 1) {
+            $user->__setInitialized(false);
             $user->__setInitializer($initializer);
+            $user->__load();
             $user->__load();
         }
 
         echo __FUNCTION__ . " - " . (microtime(true) - $start) . " seconds" . PHP_EOL;
+    }
+}
+
+/**
+ * Mock entity manager to fake `getPersister()`
+ */
+class MockEntityManager extends EntityManager
+{
+    /** @var EntityManager */
+    private $em;
+
+    /** @param EntityManager $em */
+    public function __construct(EntityManager $em)
+    {
+        $this->em = $em;
+    }
+
+    /** {@inheritDoc} */
+    public function getProxyFactory()
+    {
+        $config = $this->em->getConfiguration();
+
+        return new ProxyFactory(
+            $this,
+            $config->getProxyDir(),
+            $config->getProxyNamespace(),
+            $config->getAutoGenerateProxyClasses()
+        );
+    }
+
+    /** {@inheritDoc} */
+    public function getClassMetadata($className)
+    {
+        return $this->em->getClassMetadata($className);
+    }
+
+    /** {@inheritDoc} */
+    public function getUnitOfWork()
+    {
+        return new MockUnitOfWork();
+    }
+}
+
+/**
+ * Mock UnitOfWork manager to fake `getPersister()`
+ */
+class MockUnitOfWork extends UnitOfWork
+{
+    /** @var PersisterMock */
+    private $entityPersister;
+
+    /** */
+    public function __construct()
+    {
+        $this->entityPersister = new PersisterMock();
+    }
+
+    /** {@inheritDoc} */
+    public function getEntityPersister($entityName)
+    {
+        return $this->entityPersister;
+    }
+}
+
+/**
+ * Mock persister (we don't want PHPUnit comparator API to play a role in here)
+ */
+class PersisterMock extends BasicEntityPersister
+{
+    /** */
+    public function __construct()
+    {
+    }
+
+    /** {@inheritDoc} */
+    public function load(array $criteria, $entity = null, $assoc = null, array $hints = array(), $lockMode = 0, $limit = null, array $orderBy = null)
+    {
+        return $entity;
     }
 }
