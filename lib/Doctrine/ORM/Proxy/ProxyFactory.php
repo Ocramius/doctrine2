@@ -199,8 +199,8 @@ class ProxyFactory
 
         if ($classMetadata->getReflectionClass()->hasMethod('__wakeup')) {
             $initializer = function (Proxy $proxy) use ($entityPersister, $classMetadata) {
-                $proxy->__setInitializer(function () {});
-                $proxy->__setCloner(function () {});
+                $proxy->__setInitializer(null);
+                $proxy->__setCloner(null);
 
                 if ($proxy->__isInitialized()) {
                     return;
@@ -226,8 +226,8 @@ class ProxyFactory
             };
         } else {
             $initializer = function (Proxy $proxy) use ($entityPersister, $classMetadata) {
-                $proxy->__setInitializer(function () {});
-                $proxy->__setCloner(function () {});
+                $proxy->__setInitializer(null);
+                $proxy->__setCloner(null);
 
                 if ($proxy->__isInitialized()) {
                     return;
@@ -255,7 +255,7 @@ class ProxyFactory
             }
 
             $proxy->__setInitialized(true);
-            $proxy->__setInitializer(function () {});
+            $proxy->__setInitializer(null);
             $class = $entityPersister->getClassMetadata();
             $original = $entityPersister->load($classMetadata->getIdentifierValues($proxy));
 
