@@ -312,9 +312,9 @@ abstract class OrmFunctionalTestCase extends OrmTestCase
     /**
      * Gets an EntityManager for testing purposes.
      *
-     * @param Configuration $config The Configuration to pass to the EntityManager.
-     * @param EventManager $eventManager The EventManager to pass to the EntityManager.
-     * @return EntityManager
+     * @param \Doctrine\ORM\Configuration $config The Configuration to pass to the EntityManager.
+     * @param \Doctrine\Common\EventManager $eventManager The EventManager to pass to the EntityManager.
+     * @return \Doctrine\ORM\EntityManager
      */
     protected function _getEntityManager($config = null, $eventManager = null) {
         // NOTE: Functional tests use their own shared metadata cache, because
