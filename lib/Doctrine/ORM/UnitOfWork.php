@@ -2418,8 +2418,26 @@ class UnitOfWork implements PropertyChangedListener
             $entity = $this->identityMap[$class->rootEntityName][$idHash];
             $oid = spl_object_hash($entity);
 
-            if ($entity instanceof Proxy && ! $entity->__isInitialized__) {
-                $entity->__isInitialized__ = true;
+            if (
+                isset($hints[Query::HINT_REFRESH])
+                && isset($hints[Query::HINT_REFRESH_ENTITY])
+                && ($unmanagedProxy = $hints[Query::HINT_REFRESH_ENTITY]) !== $entity
+                && $unmanagedProxy instanceof Proxy
+            ) {
+                // DDC-1238 - we have a managed instance, but it isn't the provided one.
+                // Therefore we clear its identifier. Also, we must re-fetch metadata since the
+                // refreshed object may be anything
+                $class = $this->em->getClassMetadata(get_class($unmanagedProxy));
+
+                foreach ($class->identifier as $fieldName) {
+                    $class->reflFields[$fieldName]->setValue($unmanagedProxy, null);
+                }
+
+                return $unmanagedProxy;
+            }
+
+            if ($entity instanceof Proxy && ! $entity->__isInitialized()) {
+                $entity->__setInitialized(true);
                 $overrideLocalValues = true;
 
                 if ($entity instanceof NotifyPropertyChanged) {

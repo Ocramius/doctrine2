@@ -215,10 +215,7 @@ class ProxyFactory
                 }
 
                 $proxy->__setInitialized(true);
-
-                if (method_exists($proxy, '__wakeup')) {
-                    $proxy->__wakeup();
-                }
+                $proxy->__wakeup();
 
                 if (null === $entityPersister->load($classMetadata->getIdentifierValues($proxy), $proxy)) {
                     throw new EntityNotFoundException();
