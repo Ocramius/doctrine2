@@ -117,9 +117,7 @@ class ProxyFactory
         $proxy              = new $fqcn($definition['initializer'], $definition['cloner']);
 
         foreach ($identifierFields as $idField) {
-            if (array_key_exists($idField, $identifier)) {
-                $reflectionFields[$idField]->setValue($proxy, $identifier[$idField]);
-            }
+            $reflectionFields[$idField]->setValue($proxy, $identifier[$idField]);
         }
 
         return $proxy;
