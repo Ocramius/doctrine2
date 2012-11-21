@@ -2,11 +2,8 @@
 
 namespace Doctrine\Tests\ORM\Functional;
 
-require_once __DIR__ . '/../../TestInit.php';
-
-use Doctrine\Common\Util\ClassUtils,
-    Doctrine\Tests\Models\CMS\CmsUser,
-    Doctrine\Tests\Proxies\__CG__\Doctrine\Tests\Models\CMS\CmsUser as Proxy;
+use Doctrine\Common\Util\ClassUtils;
+use Doctrine\Tests\Models\CMS\CmsUser;
 
 /**
  * Test that Doctrine ORM correctly works with proxy instances exactly like with ordinary Entities

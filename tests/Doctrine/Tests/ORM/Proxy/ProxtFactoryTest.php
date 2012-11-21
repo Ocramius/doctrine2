@@ -7,6 +7,7 @@ use Doctrine\Common\Proxy\ProxyGenerator;
 use Doctrine\Tests\Mocks\ConnectionMock;
 use Doctrine\Tests\Mocks\EntityManagerMock;
 use Doctrine\Tests\Mocks\UnitOfWorkMock;
+use Doctrine\Tests\Mocks\DriverMock;
 
 require_once __DIR__ . '/../../TestInit.php';
 
@@ -16,14 +17,25 @@ require_once __DIR__ . '/../../TestInit.php';
  */
 class ProxtFactoryTest extends \Doctrine\Tests\OrmTestCase
 {
-    private $_connectionMock;
-    private $_uowMock;
-    private $_emMock;
+    /**
+     * @var ConnectionMock
+     */
+    private $connectionMock;
+
+    /**
+     * @var UnitOfWorkMock
+     */
+    private $uowMock;
+
+    /**
+     * @var EntityManagerMock
+     */
+    private $emMock;
 
     /**
      * @var \Doctrine\ORM\Proxy\ProxyFactory
      */
-    private $_proxyFactory;
+    private $proxyFactory;
 
     /**
      * {@inheritDoc}
@@ -31,38 +43,27 @@ class ProxtFactoryTest extends \Doctrine\Tests\OrmTestCase
     protected function setUp()
     {
         parent::setUp();
-        $this->_connectionMock = new ConnectionMock(array(), new \Doctrine\Tests\Mocks\DriverMock());
-        $this->_emMock = EntityManagerMock::create($this->_connectionMock);
-        $this->_uowMock = new UnitOfWorkMock($this->_emMock);
-        $this->_emMock->setUnitOfWork($this->_uowMock);
-        $this->_proxyFactory = new ProxyFactory($this->_emMock, __DIR__ . '/generated', 'Proxies', true);
-    }
-
-    /**
-     * {@inheritDoc}
-     */
-    public static function tearDownAfterClass()
-    {
-        foreach (new \DirectoryIterator(__DIR__ . '/generated') as $file) {
-            if (strstr($file->getFilename(), '.php')) {
-                unlink($file->getPathname());
-            }
-        }
+        $this->connectionMock = new ConnectionMock(array(), new DriverMock());
+        $this->emMock = EntityManagerMock::create($this->connectionMock);
+        $this->uowMock = new UnitOfWorkMock($this->emMock);
+        $this->emMock->setUnitOfWork($this->uowMock);
+        $this->proxyFactory = new ProxyFactory($this->emMock, sys_get_temp_dir(), 'Proxies', true);
     }
 
     public function testReferenceProxyDelegatesLoadingToThePersister()
     {
         $identifier = array('id' => 42);
         $proxyClass = 'Proxies\__CG__\Doctrine\Tests\Models\ECommerce\ECommerceFeature';
-        $persister = $this->_getMockPersister();
-        $this->_uowMock->setEntityPersister('Doctrine\Tests\Models\ECommerce\ECommerceFeature', $persister);
+        $persister = $this->getMock('Doctrine\ORM\Persisters\BasicEntityPersister', array('load'), array(), '', false);
+        $this->uowMock->setEntityPersister('Doctrine\Tests\Models\ECommerce\ECommerceFeature', $persister);
 
-        $proxy = $this->_proxyFactory->getProxy('Doctrine\Tests\Models\ECommerce\ECommerceFeature', $identifier);
+        $proxy = $this->proxyFactory->getProxy('Doctrine\Tests\Models\ECommerce\ECommerceFeature', $identifier);
 
-        $persister->expects($this->atLeastOnce())
-                  ->method('load')
-                  ->with($this->equalTo($identifier), $this->isInstanceOf($proxyClass))
-                  ->will($this->returnValue(new \stdClass())); // fake return of entity instance
+        $persister
+            ->expects($this->atLeastOnce())
+              ->method('load')
+              ->with($this->equalTo($identifier), $this->isInstanceOf($proxyClass))
+              ->will($this->returnValue(new \stdClass()));
 
         $proxy->getDescription();
     }
@@ -76,15 +77,9 @@ class ProxtFactoryTest extends \Doctrine\Tests\OrmTestCase
         $cm->initializeReflection(new \Doctrine\Common\Persistence\Mapping\RuntimeReflectionService);
         $this->assertNotNull($cm->reflClass);
 
-        $num = $this->_proxyFactory->generateProxyClasses(array($cm));
+        $num = $this->proxyFactory->generateProxyClasses(array($cm));
 
         $this->assertEquals(0, $num, "No proxies generated.");
-    }
-
-    protected function _getMockPersister()
-    {
-        $persister = $this->getMock('Doctrine\ORM\Persisters\BasicEntityPersister', array('load'), array(), '', false);
-        return $persister;
     }
 }
 
