@@ -3054,6 +3054,17 @@ class ClassMetadataInfo implements ClassMetadata
     {
         $this->assertFieldNotMapped($mapping['fieldName']);
 
+        // duplicated from {@see self::mapField} - should be moved to own method
+        if (isset($mapping['id']) && $mapping['id'] === true) {
+            if ( ! in_array($mapping['fieldName'], $this->identifier)) {
+                $this->identifier[] = $mapping['fieldName'];
+            }
+
+            if ( ! $this->isIdentifierComposite && count($this->identifier) > 1) {
+                $this->isIdentifierComposite = true;
+            }
+        }
+
         $this->embeddedClasses[$mapping['fieldName']] = $this->fullyQualifiedClassName($mapping['class']);
     }
 
@@ -3065,11 +3076,27 @@ class ClassMetadataInfo implements ClassMetadata
      */
     public function inlineEmbeddable($property, ClassMetadataInfo $embeddable)
     {
+        $isIdEmbeddable = false;
+
+        foreach ($this->identifier as $key => $idField) {
+            if ($property === $idField) {
+                array_splice($this->identifier, $key, 1);
+
+                $isIdEmbeddable = true;
+
+                break;
+            }
+        }
+
         foreach ($embeddable->fieldMappings as $fieldMapping) {
             $fieldMapping['declaredField'] = $property;
             $fieldMapping['originalField'] = $fieldMapping['fieldName'];
             $fieldMapping['fieldName'] = $property . "." . $fieldMapping['fieldName']; // TODO: Change DQL parser to accept this dot notation
             $fieldMapping['columnName'] = $property . "_" . $fieldMapping['columnName']; // TODO: Use naming strategy
+
+            if ($isIdEmbeddable) {
+                $fieldMapping['id'] = true;
+            }
 
             $this->mapField($fieldMapping);
         }
