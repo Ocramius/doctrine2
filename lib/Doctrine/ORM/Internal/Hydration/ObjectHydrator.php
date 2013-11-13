@@ -360,53 +360,7 @@ class ObjectHydrator extends AbstractHydrator
 
         eval($this->generateScalarsExtraction('rowData'));
         eval($this->generateNewObjectsExtraction('rowData'));
-
-        // Hydrate the data chunks
-        foreach ($rowData as $dqlAlias => $data) {
-            $entityName = $this->_rsm->aliasMap[$dqlAlias];
-
-            if (isset($this->_rsm->parentAliasMap[$dqlAlias])) {
-                // It's a joined result
-
-                $parentAlias = $this->_rsm->parentAliasMap[$dqlAlias];
-                // we need the $path to save into the identifier map which entities were already
-                // seen for this parent-child relationship
-                $path = $parentAlias . '.' . $dqlAlias;
-
-                // We have a RIGHT JOIN result here. Doctrine cannot hydrate RIGHT JOIN Object-Graphs
-                if ( ! isset($nonemptyComponents[$parentAlias])) {
-                    // TODO: Add special case code where we hydrate the right join objects into identity map at least
-                    continue;
-                }
-
-                // Get a reference to the parent object to which the joined element belongs.
-                if ($this->_rsm->isMixed && isset($this->rootAliases[$parentAlias])) {
-                    $first = reset($this->resultPointers);
-                    $parentObject = $first[key($first)];
-                } else if (isset($this->resultPointers[$parentAlias])) {
-                    $parentObject = $this->resultPointers[$parentAlias];
-                } else {
-                    // Parent object of relation not found, so skip it.
-                    continue;
-                }
-
-                $parentClass    = $this->ce[$this->_rsm->aliasMap[$parentAlias]];
-                $oid            = spl_object_hash($parentObject);
-                $relationField  = $this->_rsm->relationMap[$dqlAlias];
-                $relation       = $parentClass->associationMappings[$relationField];
-                $reflField      = $parentClass->reflFields[$relationField];
-
-                // Check the type of the relation (many or single-valued)
-                if ( ! ($relation['type'] & ClassMetadata::TO_ONE)) {
-                    eval($this->generateCollectionValuedAssociationHydration());
-                } else {
-                    eval($this->generateSingleValuedAssociationHydration());
-                }
-            } else {
-                eval($this->generateRootResultElement());
-            }
-        }
-
+        eval($this->generateMainHydrationLoop());
         eval($this->generateAppendScalars());
         eval($this->generateAppendNewObjects());
     }
@@ -429,6 +383,58 @@ class ObjectHydrator extends AbstractHydrator
         foreach ($aliases as $alias) {
             $this->identifierMap[$alias] = array();
         }
+    }
+
+    private function generateMainHydrationLoop()
+    {
+        return <<<PHP
+
+        // Hydrate the data chunks
+        foreach (\$rowData as \$dqlAlias => \$data) {
+            \$entityName = \$this->_rsm->aliasMap[\$dqlAlias];
+
+            if (isset(\$this->_rsm->parentAliasMap[\$dqlAlias])) {
+                // It's a joined result
+
+                \$parentAlias = \$this->_rsm->parentAliasMap[\$dqlAlias];
+                // we need the \$path to save into the identifier map which entities were already
+                // seen for this parent-child relationship
+                \$path = \$parentAlias . '.' . \$dqlAlias;
+
+                // We have a RIGHT JOIN result here. Doctrine cannot hydrate RIGHT JOIN Object-Graphs
+                if ( ! isset(\$nonemptyComponents[\$parentAlias])) {
+                    // TODO: Add special case code where we hydrate the right join objects into identity map at least
+                    continue;
+                }
+
+                // Get a reference to the parent object to which the joined element belongs.
+                if (\$this->_rsm->isMixed && isset(\$this->rootAliases[\$parentAlias])) {
+                    \$first = reset(\$this->resultPointers);
+                    \$parentObject = \$first[key(\$first)];
+                } else if (isset(\$this->resultPointers[\$parentAlias])) {
+                    \$parentObject = \$this->resultPointers[\$parentAlias];
+                } else {
+                    // Parent object of relation not found, so skip it.
+                    continue;
+                }
+
+                \$parentClass    = \$this->ce[\$this->_rsm->aliasMap[\$parentAlias]];
+                \$oid            = spl_object_hash(\$parentObject);
+                \$relationField  = \$this->_rsm->relationMap[\$dqlAlias];
+                \$relation       = \$parentClass->associationMappings[\$relationField];
+                \$reflField      = \$parentClass->reflFields[\$relationField];
+
+                // Check the type of the relation (many or single-valued)
+                if ( ! (\$relation['type'] & \Doctrine\ORM\Mapping\ClassMetadata::TO_ONE)) {
+                    {$this->generateCollectionValuedAssociationHydration()};
+                } else {
+                    {$this->generateSingleValuedAssociationHydration()};
+                }
+            } else {
+                {$this->generateRootResultElement()};
+            }
+        }
+PHP;
     }
 
     private function generateScalarsExtraction($rowDataName)
@@ -481,7 +487,7 @@ PHP;
                     }
                     \$resultKey = \$this->resultCounter;
                     ++\$this->resultCounter;
-                    return;
+                    continue;
                 }
 
                 // check for existing result from the iterations before
