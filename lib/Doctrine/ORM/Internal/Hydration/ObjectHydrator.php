@@ -358,11 +358,13 @@ class ObjectHydrator extends AbstractHydrator
         // Split the row data into chunks of class data.
         $rowData = $this->gatherRowData($row, $cache, $id, $nonemptyComponents);
 
-        eval($this->generateScalarsExtraction('rowData'));
-        eval($this->generateNewObjectsExtraction('rowData'));
-        eval($this->generateMainHydrationLoop());
-        eval($this->generateAppendScalars());
-        eval($this->generateAppendNewObjects());
+        eval(
+            $this->generateScalarsExtraction('rowData')
+            . $this->generateNewObjectsExtraction('rowData')
+            . $this->generateMainHydrationLoop()
+            . $this->generateAppendScalars()
+            . $this->generateAppendNewObjects()
+        );
     }
 
     /**
