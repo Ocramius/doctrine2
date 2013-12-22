@@ -2,7 +2,9 @@
 
 namespace Doctrine\Tests\ORM\Persisters;
 
+use Doctrine\Common\Collections\Criteria;
 use Doctrine\DBAL\Types\Type as DBALType;
+use Doctrine\ORM\EntityManager;
 use Doctrine\ORM\Persisters\BasicEntityPersister;
 use Doctrine\Tests\Models\CustomType\CustomTypeParent;
 use Doctrine\Tests\Models\CustomType\CustomTypeChild;
@@ -13,7 +15,14 @@ require_once __DIR__ . '/../../TestInit.php';
 
 class BasicEntityPersisterTypeValueSqlTest extends \Doctrine\Tests\OrmTestCase
 {
+    /**
+     * @var BasicEntityPersister
+     */
     protected $_persister;
+
+    /**
+     * @var EntityManager
+     */
     protected $_em;
 
     protected function setUp()
@@ -109,5 +118,24 @@ class BasicEntityPersisterTypeValueSqlTest extends \Doctrine\Tests\OrmTestCase
     {
         $statement = $this->_persister->getSelectConditionStatementSQL('test', null, array(), Comparison::NEQ);
         $this->assertEquals('test IS NOT NULL', $statement);
+    }
+
+    public function testCountCondition()
+    {
+        $persister = new BasicEntityPersister($this->_em, $this->_em->getClassMetadata('Doctrine\Tests\Models\Quote\SimpleEntity'));
+
+        // Using a criteria as array
+        $statement = $persister->getCountSQL(array('value' => 'bar'));
+        $this->assertEquals('SELECT COUNT(*) FROM "ddc-1719-simple-entity" t0 WHERE t0."simple-entity-value" = ?', $statement);
+
+        // Using a criteria object
+        $criteria = new Criteria(Criteria::expr()->eq('value', 'bar'));
+        $statement = $persister->getCountSQL($criteria);
+        $this->assertEquals('SELECT COUNT(*) FROM "ddc-1719-simple-entity" t0 WHERE t0."simple-entity-value" = ?', $statement);
+    }
+
+    public function testCountEntities()
+    {
+        $this->assertEquals(0, $this->_persister->count());
     }
 }
